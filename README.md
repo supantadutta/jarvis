@@ -14,6 +14,107 @@ scaffolding and design docs for Phases 2–4.
 
 ---
 
+## 🏗️ Architecture (full overview)
+
+The complete system in one view — interfaces, the multi-AI brain, the security
+layer (every action passes the Permission Guard), the capability/tool layer, and
+the optional external services. More views (request-lifecycle sequence,
+model-router decision flow, execution modes) are in
+[`docs/architecture.md`](docs/architecture.md).
+
+```mermaid
+flowchart TB
+    subgraph UI["🧑 Interfaces"]
+        direction LR
+        WEB["Web Dashboard<br/>(Next.js + Tailwind)"]
+        TG["Telegram Bot<br/>(ID allowlist)"]
+        VOICE["Voice<br/>(push-to-talk · P2)"]
+        CLI["Desktop command bar"]
+    end
+
+    subgraph API["⚙️ FastAPI Backend &nbsp;·&nbsp; /api/*"]
+        ROUTES["chat · tasks · models · agents · tools<br/>approvals · memory · audit · workflows · health · control"]
+    end
+
+    subgraph BRAIN["🧠 Multi-AI Brain"]
+        direction TB
+        SUP["<b>Supervisor</b><br/>classify intent · pick mode<br/>select team · compose answer"]
+        PLAN["<b>Planner</b><br/>steps + risk labels"]
+        ROUTER["<b>Model Router</b><br/>filter → score → select<br/>(10 modes)"]
+        VER["<b>Verifier / Critic</b><br/>correctness · safety · completeness"]
+        subgraph SPEC["Specialist agents"]
+            direction LR
+            RES["Research"]; CODE["Code"]; FILEA["File/Doc"]
+            BRW["Browser"]; DESK["Desktop"]; SOC["SOC<br/>(defensive)"]
+            CRED["Credential"]; WF["Workflow"]
+        end
+    end
+
+    subgraph SEC["🔒 Security & Governance — every tool call passes here"]
+        direction LR
+        GUARD["<b>Permission Guard</b><br/>10 levels · path/domain/command<br/>allowlists · emergency stop"]
+        APPQ["<b>Approval Queue</b><br/>approve · deny · trust"]
+        PI["Prompt-injection defense<br/>+ secret redaction"]
+    end
+
+    subgraph CAP["🧰 Capabilities"]
+        direction LR
+        TOOLS["<b>Tool Registry (29)</b><br/>+ ToolExecutor (single chokepoint)"]
+        LLM["<b>LLM Providers</b><br/>Mock · Ollama · OpenAI-compat<br/>· Anthropic/Gemini (P2)"]
+        MEM["RAG / Memory<br/>(lexical → Chroma/Qdrant)"]
+        AUDIT["Audit Log<br/>(append-only JSONL)"]
+        DB[("SQLModel · 25 tables<br/>SQLite ⟶ Postgres")]
+    end
+
+    subgraph EXT["🌐 External services (optional · local-first)"]
+        direction LR
+        OLL["Ollama<br/>(local models)"]
+        CLOUD["OpenAI · Claude · Gemini<br/>Groq · OpenRouter"]
+        PW["Playwright<br/>(browser)"]
+        VEC["Chroma / Qdrant"]
+        OSK["OS keychain / vault"]
+    end
+
+    UI ==> ROUTES ==> SUP
+    SUP --> PLAN --> ROUTER --> SPEC
+    SUP --> ROUTER
+    SPEC --> VER --> SUP
+    ROUTER -. selects model .-> LLM
+    PI -. wraps untrusted<br/>web/file/email .-> SPEC
+
+    SPEC ==>|every tool call| TOOLS ==> GUARD
+    GUARD -->|requires approval| APPQ
+    APPQ -. user decides .-> UI
+    GUARD -->|auto-allow| RUN["✅ run tool"]
+    GUARD -->|deny| BLK["⛔ blocked / e-stop"]
+    TOOLS --> AUDIT
+
+    LLM --> OLL & CLOUD
+    TOOLS --> PW
+    CRED --> OSK
+    MEM --> VEC
+    SUP --> MEM
+    ROUTES --> DB
+    AUDIT --> DB
+
+    classDef sec fill:#3a1f1f,stroke:#e74c3c,color:#fff,stroke-width:2px;
+    classDef brain fill:#16263a,stroke:#3498db,color:#fff;
+    classDef cap fill:#16302a,stroke:#1abc9c,color:#fff;
+    class GUARD,APPQ,PI sec;
+    class SUP,PLAN,ROUTER,VER brain;
+    class TOOLS,LLM,MEM,AUDIT cap;
+```
+
+**Read it in one line:** an interface sends a command → the **Supervisor**
+classifies it and picks a mode → the **Model Router** chooses the best local/cloud
+model(s) → the **Planner** breaks it into risk-labelled steps → **specialist
+agents** execute, but **every tool call is gated by the Permission Guard** (auto,
+approve, or deny) → the **Verifier** checks the result → the Supervisor composes
+the final answer → everything is written to the **audit log**. Private mode keeps
+it 100% local.
+
+---
+
 ## 1. What was built (Phase 1)
 
 | Area | Status |
