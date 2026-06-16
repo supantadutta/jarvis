@@ -79,6 +79,12 @@ class Brain:
             screenshots_dir=self.settings.screenshots_dir,
         )
 
+        # --- workflows ---
+        from app.workflows.engine import WorkflowEngine, WorkflowScheduler
+
+        self.workflows = WorkflowEngine(self)
+        self.scheduler = WorkflowScheduler(self.workflows)
+
         # --- agents ---
         self.supervisor = SupervisorAgent()
         self.planner = PlannerAgent()

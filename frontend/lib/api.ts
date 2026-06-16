@@ -28,6 +28,8 @@ export const api = {
     }),
   audit: (limit = 100) => http<any>(`/audit?limit=${limit}`),
   workflows: () => http<any>("/workflows"),
+  runWorkflow: (key: string) => http<any>(`/workflows/${key}/run`, { method: "POST" }),
+  workflowRuns: () => http<any>("/workflows/runs"),
   memorySearch: (query: string) =>
     http<any>("/memory/search", { method: "POST", body: JSON.stringify({ query }) }),
   emergencyStop: (engaged: boolean) =>

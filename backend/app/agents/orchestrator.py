@@ -87,13 +87,15 @@ class Orchestrator:
         mode = mode_override or cls.mode
         private = mode == Mode.PRIVATE_MODE
 
-        # Route models.
+        # Route models over the *healthy* enabled set; fall back to enabled if
+        # no health info is available (e.g. provider down but still usable).
         req = _routing_request(cls, mode=mode)
-        routing: RoutingResult = brain.router.route(brain.registry.enabled(), req)
+        candidates = await brain.registry.available()
+        if not candidates:
+            candidates = brain.registry.enabled()
+        routing: RoutingResult = brain.router.route(candidates, req)
         if not routing.selected:
-            # Fall back to any enabled model (e.g. mock in tests/local).
-            enabled = brain.registry.enabled()
-            routing.selected = enabled[:1]
+            routing.selected = candidates[:1]
         if not routing.selected:
             raise RuntimeError("No models available to handle the request.")
 

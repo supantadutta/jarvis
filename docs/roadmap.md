@@ -39,11 +39,23 @@ Implemented & tested in this release:
   gate (pure validation unit-tested).
 - ✅ **Voice engines** scaffolded: faster-whisper STT + Piper TTS (lazy).
 
+Also implemented:
+- ✅ **Health-aware routing**: the router now selects over the *healthy* enabled
+  model set (`registry.available()` with a TTL health cache), falling back to the
+  enabled set when no health info exists.
+- ✅ **Workflow execution engine**: runs a workflow's steps through the assigned
+  agents and writes output through the permissioned tool layer; runs are
+  recorded and exposed at `POST /workflows/{key}/run` + `GET /workflows/runs`
+  (with a Run button on the dashboard). `WorkflowScheduler` lists schedule-trigger
+  workflows (cron execution swaps in Arq/APScheduler in production).
+- ✅ **Persistence repository**: `persist_task/approval/audit/chat` + loaders map
+  the in-memory runtime objects onto the SQLModel tables (tested on SQLite).
+
 Remaining for Phase 2 completion:
-- Live streaming responses; wire model health into the router availability filter.
-- Persistent Playwright `storage_state` sessions + encrypted at rest.
-- Move in-memory runtime stores (tasks/approvals/audit/memory) onto SQLModel +
-  Redis/Arq for background tasks and workflow scheduling.
+- Live streaming responses (SSE/WebSocket token streaming).
+- Persistent Playwright `storage_state` sessions, encrypted at rest via the vault.
+- Write-through persistence on the hot path + Redis/Arq background execution and
+  cron-driven workflow scheduling.
 - End-to-end voice push-to-talk loop with voice confirmation on risky actions.
 
 ## Phase 3 — Integrations

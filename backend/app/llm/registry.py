@@ -277,3 +277,25 @@ class ModelRegistry:
             return await provider.health()
         except Exception:  # noqa: BLE001
             return False
+
+    async def health_cached(self, key: str, *, ttl: float = 30.0) -> bool:
+        """Health check with a short TTL cache to avoid hammering providers."""
+        import time
+
+        if not hasattr(self, "_health_cache"):
+            self._health_cache: dict[str, tuple[float, bool]] = {}
+        now = time.monotonic()
+        cached = self._health_cache.get(key)
+        if cached and (now - cached[0]) < ttl:
+            return cached[1]
+        ok = await self.health(key)
+        self._health_cache[key] = (now, ok)
+        return ok
+
+    async def available(self, *, ttl: float = 30.0) -> list[ModelSpec]:
+        """Enabled models whose provider currently passes its health check."""
+        out: list[ModelSpec] = []
+        for spec in self.enabled():
+            if await self.health_cached(spec.key, ttl=ttl):
+                out.append(spec)
+        return out

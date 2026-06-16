@@ -201,6 +201,19 @@ async def list_workflows() -> dict:
     return {"workflows": [workflow_public(w) for w in SEED_WORKFLOWS]}
 
 
+@api_router.post("/workflows/{key}/run", tags=["workflows"])
+async def run_workflow(key: str, brain: Brain = Depends(get_brain)) -> dict:
+    run = await brain.workflows.run(key)
+    if run.status == "failed" and run.error and "Unknown workflow" in run.error:
+        raise HTTPException(404, run.error)
+    return run.public()
+
+
+@api_router.get("/workflows/runs", tags=["workflows"])
+async def workflow_runs(brain: Brain = Depends(get_brain)) -> dict:
+    return {"runs": [r.public() for r in brain.workflows.runs()]}
+
+
 # --------------------------------------------------------------------------
 # control (emergency stop) + health
 # --------------------------------------------------------------------------
