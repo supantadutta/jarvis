@@ -38,9 +38,14 @@ class AuditLog:
         self._entries: list[AuditEntry] = []
         self._max = max_memory
         self._lock = threading.Lock()
+        self._listeners: list = []
         self.sink_path = Path(sink_path) if sink_path else None
         if self.sink_path:
             self.sink_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def add_listener(self, cb) -> None:
+        """Register a callback invoked with each new AuditEntry (write-through)."""
+        self._listeners.append(cb)
 
     def record(
         self,
@@ -82,6 +87,11 @@ class AuditLog:
                         fh.write(json.dumps(asdict(entry)) + "\n")
                 except OSError:
                     pass
+        for cb in self._listeners:
+            try:
+                cb(entry)
+            except Exception:  # noqa: BLE001 - persistence must never break auditing
+                pass
         return entry
 
     def recent(self, limit: int = 100) -> list[AuditEntry]:

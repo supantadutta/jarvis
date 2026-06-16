@@ -27,7 +27,9 @@ from app.tools.executor import ToolExecutor
 
 
 class Brain:
-    def __init__(self, settings: Settings | None = None, *, use_mock: bool = False) -> None:
+    def __init__(
+        self, settings: Settings | None = None, *, use_mock: bool = False, persist: bool = False
+    ) -> None:
         self.settings = settings or get_settings()
         self.settings.ensure_dirs()
 
@@ -96,6 +98,60 @@ class Brain:
             "verifier": self.verifier,
             **self.specialists,
         }
+
+        # --- write-through persistence (opt-in) ---
+        self.persist_enabled = persist
+        self._engine = None
+        if persist:
+            self._setup_persistence()
+
+    def _setup_persistence(self) -> None:
+        """Create the DB schema and attach write-through listeners so audit
+        entries and approvals land in the database as they happen."""
+        from sqlmodel import create_engine
+
+        from app.services import persistence as repo
+
+        url = self.settings.database_url
+        connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
+        self._engine = create_engine(url, connect_args=connect_args)
+        import app.models.tables  # noqa: F401  (register metadata)
+        from sqlmodel import SQLModel
+
+        SQLModel.metadata.create_all(self._engine)
+
+        def _on_audit(entry):
+            with self._session() as s:
+                repo.persist_audit(s, entry)
+
+        def _on_approval(approval):
+            with self._session() as s:
+                repo.persist_approval(s, approval)
+
+        self.audit.add_listener(_on_audit)
+        self.approvals.add_listener(_on_approval)
+
+    def _session(self):
+        from sqlmodel import Session
+
+        return Session(self._engine)
+
+    def persist_task(self, task) -> None:
+        """Persist a task + its steps if persistence is enabled (no-op otherwise)."""
+        if not self.persist_enabled or self._engine is None:
+            return
+        from app.services import persistence as repo
+
+        with self._session() as s:
+            repo.persist_task(s, task)
+
+    def persist_chat(self, *, role: str, content: str, task_id: str | None, source: str) -> None:
+        if not self.persist_enabled or self._engine is None:
+            return
+        from app.services import persistence as repo
+
+        with self._session() as s:
+            repo.persist_chat(s, role=role, content=content, task_id=task_id, source=source)
 
     def _bind_cloud_providers(self) -> None:
         from app.llm.cloud_providers import (

@@ -29,17 +29,56 @@ api_router = APIRouter()
 # --------------------------------------------------------------------------
 # chat
 # --------------------------------------------------------------------------
+def _parse_mode(value: str | None) -> Mode | None:
+    if not value:
+        return None
+    try:
+        return Mode(value)
+    except ValueError as exc:
+        raise HTTPException(400, f"Unknown mode '{value}'") from exc
+
+
 @api_router.post("/chat", response_model=ChatResponse, tags=["chat"])
 async def chat(req: ChatRequest, brain: Brain = Depends(get_brain)) -> ChatResponse:
-    mode_override: Mode | None = None
-    if req.mode:
-        try:
-            mode_override = Mode(req.mode)
-        except ValueError as exc:
-            raise HTTPException(400, f"Unknown mode '{req.mode}'") from exc
     orch = Orchestrator(brain)
-    result = await orch.run(req.message, mode_override=mode_override)
+    result = await orch.run(req.message, mode_override=_parse_mode(req.mode))
     return ChatResponse(**result.__dict__)
+
+
+@api_router.post("/chat/stream", tags=["chat"])
+async def chat_stream(req: ChatRequest, brain: Brain = Depends(get_brain)):
+    """Server-Sent Events: emits progress events then streams the answer in
+    chunks. (Underlying provider token-streaming lands with streaming-capable
+    providers; this already gives the dashboard a live, incremental UX.)"""
+    import json as _json
+
+    from fastapi.responses import StreamingResponse
+
+    mode_override = _parse_mode(req.mode)
+
+    async def gen():
+        def sse(event: str, data: dict) -> str:
+            return f"event: {event}\ndata: {_json.dumps(data)}\n\n"
+
+        cls = brain.supervisor.classify(req.message)
+        yield sse("classified", {"task_type": cls.task_type.value,
+                                 "mode": (mode_override or cls.mode).value})
+        result = await Orchestrator(brain).run(req.message, mode_override=mode_override)
+        yield sse("routed", {"models": result.models, "agents": result.agents})
+        if result.plan:
+            yield sse("plan", {"steps": result.plan})
+        # Stream the answer in word chunks.
+        words = result.answer.split(" ")
+        for i in range(0, len(words), 8):
+            yield sse("token", {"text": " ".join(words[i : i + 8]) + " "})
+        yield sse("done", {
+            "task_id": result.task_id,
+            "verifier": result.verifier,
+            "attempts": result.attempts,
+            "pending_approvals": result.pending_approvals,
+        })
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
 
 
 # --------------------------------------------------------------------------

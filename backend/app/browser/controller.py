@@ -92,6 +92,13 @@ class BrowserController:
         except Exception as exc:  # noqa: BLE001
             return ToolResult(ok=False, error=str(exc))
 
+    async def save_session(self, profile: str) -> str | None:  # pragma: no cover - integration
+        """Persist the current context's storage_state (cookies/localStorage)."""
+        if self._context is None:
+            return None
+        state = await self._context.storage_state()
+        return state if isinstance(state, dict) else None
+
     async def close(self) -> None:  # pragma: no cover
         for closer in (self._context, self._browser):
             if closer:
@@ -99,3 +106,32 @@ class BrowserController:
         if self._pw:
             await self._pw.stop()
         self._context = self._browser = self._pw = None
+
+
+class SessionStore:
+    """Encrypts Playwright `storage_state` at rest via a vault backend, so
+    'log in once, reuse session' never persists cookies in plaintext. The DB
+    only holds a `storage_state_ref` pointer (see BrowserProfile)."""
+
+    def __init__(self, vault) -> None:
+        self.vault = vault
+
+    @staticmethod
+    def _ref(profile: str) -> str:
+        return f"browser_session:{profile}"
+
+    def save(self, profile: str, storage_state: dict) -> str:
+        import json
+
+        ref = self._ref(profile)
+        self.vault.set(ref, json.dumps(storage_state))
+        return ref
+
+    def load(self, profile: str) -> dict | None:
+        import json
+
+        raw = self.vault.get(self._ref(profile))
+        return json.loads(raw) if raw else None
+
+    def delete(self, profile: str) -> None:
+        self.vault.delete(self._ref(profile))

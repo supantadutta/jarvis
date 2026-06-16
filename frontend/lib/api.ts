@@ -16,6 +16,35 @@ export const api = {
   health: () => http<any>("/health"),
   chat: (message: string, mode?: string) =>
     http<any>("/chat", { method: "POST", body: JSON.stringify({ message, mode }) }),
+
+  // SSE streaming: invokes onEvent(eventName, data) per server-sent event.
+  chatStream: async (
+    message: string,
+    mode: string | undefined,
+    onEvent: (event: string, data: any) => void,
+  ) => {
+    const res = await fetch(`${API_BASE}/api/chat/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, mode }),
+    });
+    if (!res.body) throw new Error("No stream body");
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const blocks = buf.split("\n\n");
+      buf = blocks.pop() || "";
+      for (const block of blocks) {
+        const ev = block.match(/^event: (.*)$/m)?.[1];
+        const dataLine = block.match(/^data: (.*)$/m)?.[1];
+        if (ev && dataLine) onEvent(ev, JSON.parse(dataLine));
+      }
+    }
+  },
   models: () => http<any>("/models"),
   agents: () => http<any>("/agents"),
   tools: () => http<any>("/tools"),

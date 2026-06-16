@@ -201,6 +201,11 @@ class Orchestrator:
         task.status = TaskStatus.COMPLETED
         task.touch()
 
+        # Write-through persistence (no-op unless enabled on the Brain).
+        brain.persist_chat(role="user", content=command, task_id=task.id, source="orchestrator")
+        brain.persist_chat(role="assistant", content=answer, task_id=task.id, source="orchestrator")
+        brain.persist_task(task)
+
         # Save useful results to memory in deep-work mode.
         if mode == Mode.DEEP_WORK_MODE and verifier_info and verifier_info.get("passed"):
             brain.memory.add(answer, collection="deep_work", source=f"task:{task.id}")

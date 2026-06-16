@@ -10,7 +10,9 @@ _brain: Brain | None = None
 def get_brain() -> Brain:
     global _brain
     if _brain is None:
-        _brain = Brain(get_settings())
+        # The live app persists runtime state to the database; tests inject a
+        # mock-backed Brain (persistence off) via set_brain().
+        _brain = Brain(get_settings(), persist=True)
     return _brain
 
 

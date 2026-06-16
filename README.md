@@ -139,7 +139,7 @@ it 100% local.
 | Credential manager (metadata + masking + approval hook) | ✅ |
 | Next.js **dashboard** (chat, tasks, agents, models, approvals, tools, memory, workflows, audit, health) | ✅ |
 | Docker Compose, `.env.example`, Makefile, bootstrap/health scripts | ✅ |
-| **Tests** — 85 passing (permissions, router, tools, approvals, orchestrator, API, Phase 2) | ✅ |
+| **Tests** — 90 passing (permissions, router, tools, approvals, orchestrator, API, Phase 2) | ✅ |
 
 ### Phase 2 (in progress — see `docs/roadmap.md`)
 
@@ -155,7 +155,7 @@ it 100% local.
 | Health-aware routing (`registry.available()` + TTL cache) | ✅ tested |
 | Workflow execution engine + run API + dashboard Run button | ✅ tested |
 | Persistence repository (tasks/approvals/audit/chat → SQLModel) | ✅ tested |
-| Streaming · persistent browser sessions · write-through persist · cron scheduler | ⏳ next |
+| Write-through persistence · SSE streaming · encrypted browser sessions | ✅ tested |
 
 The core and the **entire test suite run with only Python + SQLite + the mock
 provider** — no Ollama, no Postgres, no API keys required.

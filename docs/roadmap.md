@@ -51,12 +51,23 @@ Also implemented:
 - ✅ **Persistence repository**: `persist_task/approval/audit/chat` + loaders map
   the in-memory runtime objects onto the SQLModel tables (tested on SQLite).
 
+Also implemented:
+- ✅ **Write-through persistence** (opt-in): the live Brain persists tasks,
+  audit entries, approvals, and chat messages to the DB as they happen, via
+  listener hooks on the audit log + approval queue (tests stay hermetic with
+  persistence off).
+- ✅ **SSE streaming** chat endpoint `POST /chat/stream` — emits
+  classified → routed → plan → token… → done events; dashboard chat consumes it
+  live (toggleable).
+- ✅ **Encrypted browser sessions**: `SessionStore` saves Playwright
+  `storage_state` encrypted at rest through the vault (DB holds only a pointer);
+  round-trip tested.
+
 Remaining for Phase 2 completion:
-- Live streaming responses (SSE/WebSocket token streaming).
-- Persistent Playwright `storage_state` sessions, encrypted at rest via the vault.
-- Write-through persistence on the hot path + Redis/Arq background execution and
-  cron-driven workflow scheduling.
-- End-to-end voice push-to-talk loop with voice confirmation on risky actions.
+- Provider-level **token** streaming (vs. server-chunked) for streaming-capable
+  providers.
+- Redis/Arq background execution + **cron-driven** workflow scheduling.
+- End-to-end **voice** push-to-talk loop with voice confirmation on risky actions.
 
 ## Phase 3 — Integrations
 

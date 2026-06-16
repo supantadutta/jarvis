@@ -10,8 +10,10 @@ const MODES = [
 export default function ChatPage() {
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState("");
+  const [stream, setStream] = useState(true);
   const [log, setLog] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
+  const [streaming, setStreaming] = useState("");
 
   async function send() {
     if (!message.trim()) return;
@@ -19,8 +21,22 @@ export default function ChatPage() {
     const cmd = message;
     setMessage("");
     try {
-      const res = await api.chat(cmd, mode || undefined);
-      setLog((l) => [{ cmd, res }, ...l]);
+      if (stream) {
+        setStreaming("");
+        let acc = "";
+        const meta: any = { cmd, res: { answer: "", models: [], mode: "", task_type: "" } };
+        await api.chatStream(cmd, mode || undefined, (ev, data) => {
+          if (ev === "classified") meta.res.mode = data.mode;
+          if (ev === "routed") meta.res.models = data.models;
+          if (ev === "token") { acc += data.text; setStreaming(acc); }
+          if (ev === "done") { meta.res.answer = acc; meta.res = { ...meta.res, ...data }; }
+        });
+        setStreaming("");
+        setLog((l) => [meta, ...l]);
+      } else {
+        const res = await api.chat(cmd, mode || undefined);
+        setLog((l) => [{ cmd, res }, ...l]);
+      }
     } catch (e: any) {
       setLog((l) => [{ cmd, error: String(e) }, ...l]);
     } finally {
@@ -57,6 +73,17 @@ export default function ChatPage() {
           {busy ? "…" : "Send"}
         </button>
       </div>
+
+      <label className="flex items-center gap-2 text-xs text-neutral-400 mb-4">
+        <input type="checkbox" checked={stream} onChange={(e) => setStream(e.target.checked)} />
+        stream responses (SSE)
+      </label>
+
+      {streaming && (
+        <div className="rounded border border-blue-900 bg-neutral-900/50 p-4 mb-4 whitespace-pre-wrap">
+          {streaming}<span className="animate-pulse">▌</span>
+        </div>
+      )}
 
       <div className="space-y-4">
         {log.map((entry, i) => (

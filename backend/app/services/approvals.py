@@ -74,10 +74,23 @@ class Approval:
 class ApprovalQueue:
     def __init__(self) -> None:
         self._items: dict[str, Approval] = {}
+        self._listeners: list = []
+
+    def add_listener(self, cb) -> None:
+        """Register a callback invoked on create/resolve (write-through)."""
+        self._listeners.append(cb)
+
+    def _notify(self, approval: Approval) -> None:
+        for cb in self._listeners:
+            try:
+                cb(approval)
+            except Exception:  # noqa: BLE001 - persistence must not break approvals
+                pass
 
     def create(self, request: ApprovalRequest) -> Approval:
         approval = Approval(id=uuid.uuid4().hex[:12], request=request)
         self._items[approval.id] = approval
+        self._notify(approval)
         return approval
 
     def get(self, approval_id: str) -> Approval | None:
@@ -109,6 +122,7 @@ class ApprovalQueue:
         approval.resolved_by = resolved_by
         approval.note = note
         approval._event.set()
+        self._notify(approval)
         return approval
 
     async def wait(self, approval_id: str, timeout: float | None = None) -> Approval | None:
