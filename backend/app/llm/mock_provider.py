@@ -80,5 +80,12 @@ class MockProvider(LLMProvider):
             completion_tokens=len(text) // 4,
         )
 
+    async def stream(self, request: CompletionRequest):
+        """Yield the would-be completion in word chunks (deterministic)."""
+        resp = await self.complete(request)
+        words = resp.text.split(" ")
+        for i in range(0, len(words), 4):
+            yield " ".join(words[i : i + 4]) + (" " if i + 4 < len(words) else "")
+
     async def health(self) -> bool:
         return self._healthy

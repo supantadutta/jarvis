@@ -61,3 +61,16 @@ class LLMProvider(Protocol):
     async def health(self) -> bool:
         """Cheap availability check used by the router/registry."""
         ...
+
+
+async def stream_text(provider: "LLMProvider", request: CompletionRequest):
+    """Yield text chunks from a provider, using native streaming when available
+    and falling back to a single complete() call otherwise."""
+    streamer = getattr(provider, "stream", None)
+    if streamer is not None:
+        async for chunk in streamer(request):
+            if chunk:
+                yield chunk
+        return
+    resp = await provider.complete(request)
+    yield resp.text

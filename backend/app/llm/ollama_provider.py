@@ -61,6 +61,28 @@ class OllamaProvider(LLMProvider):
             raw=data,
         )
 
+    async def stream(self, request: CompletionRequest):  # pragma: no cover - network
+        import json
+
+        payload = {
+            "model": request.model,
+            "messages": [{"role": m.role.value, "content": m.content} for m in request.messages],
+            "stream": True,
+            "options": {"temperature": request.temperature},
+        }
+        async with self._client() as client:
+            async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as resp:
+                async for line in resp.aiter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        data = json.loads(line)
+                    except ValueError:
+                        continue
+                    chunk = (data.get("message") or {}).get("content", "")
+                    if chunk:
+                        yield chunk
+
     async def health(self) -> bool:  # pragma: no cover - network
         try:
             async with self._client() as client:

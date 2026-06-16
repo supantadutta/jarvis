@@ -279,6 +279,84 @@ class Orchestrator:
                 break
         return best_text, attempts, contributions, verifier_info
 
+    # Modes whose answer comes from a single model can be token-streamed live.
+    _STREAMABLE = frozenset({Mode.SINGLE_BEST_MODEL, Mode.FAST_MODE, Mode.PRIVATE_MODE})
+
+    async def stream_answer(self, command: str, *, mode_override: Mode | None = None):
+        """Async generator of (event, data) tuples. Single-model modes stream the
+        worker model's tokens natively; richer modes fall back to running the full
+        orchestration and chunking the final answer."""
+        brain = self.brain
+        cls = brain.supervisor.classify(command)
+        mode = mode_override or cls.mode
+        yield ("classified", {"task_type": cls.task_type.value, "mode": mode.value})
+
+        if mode not in self._STREAMABLE:
+            result = await self.run(command, mode_override=mode_override)
+            yield ("routed", {"models": result.models, "agents": result.agents})
+            if result.plan:
+                yield ("plan", {"steps": result.plan})
+            words = result.answer.split(" ")
+            for i in range(0, len(words), 8):
+                yield ("token", {"text": " ".join(words[i : i + 8]) + " "})
+            yield ("done", {
+                "task_id": result.task_id, "verifier": result.verifier,
+                "attempts": result.attempts,
+                "pending_approvals": result.pending_approvals,
+            })
+            return
+
+        # --- native single-model token streaming ---
+        from app.llm.base import ChatMessage, CompletionRequest, Role, stream_text
+
+        req = _routing_request(cls, mode=mode)
+        candidates = await brain.registry.available() or brain.registry.enabled()
+        routing = brain.router.route(candidates, req)
+        selected = routing.selected or candidates[:1]
+        spec = selected[0]
+        team = brain.supervisor.select_team(cls)
+        task = brain.tasks.create(command, cls.task_type.value, mode.value)
+        task.models = [spec.key]
+        task.agents = team
+        task.status = TaskStatus.RUNNING
+        yield ("routed", {"models": [spec.key], "agents": team})
+
+        worker = self._pick_worker(team)
+        mem_hits = brain.memory.search(command, limit=3)
+        memory_context = "\n".join(f"- {h.item.text}" for h in mem_hits)
+        system = worker.system_prompt
+        if memory_context:
+            system += f"\n\nRelevant memory:\n{memory_context}"
+        provider = brain.provider_for(spec)
+        creq = CompletionRequest(
+            model=spec.model_name,
+            messages=[ChatMessage(Role.SYSTEM, system), ChatMessage(Role.USER, command)],
+            temperature=0.2,
+        )
+        acc = ""
+        try:
+            async for chunk in stream_text(provider, creq):
+                acc += chunk
+                yield ("token", {"text": chunk})
+        except Exception as exc:  # noqa: BLE001
+            yield ("error", {"message": str(exc)})
+
+        task.result = acc
+        task.status = TaskStatus.COMPLETED
+        task.touch()
+        brain.persist_chat(role="user", content=command, task_id=task.id, source="stream")
+        brain.persist_chat(role="assistant", content=acc, task_id=task.id, source="stream")
+        brain.persist_task(task)
+        brain.audit.record(
+            user_command=command, agent="supervisor", model=spec.key,
+            input_summary=command, output_summary=acc, risk="low",
+            approval_status="auto", extra={"mode": mode.value, "stream": True},
+        )
+        yield ("done", {
+            "task_id": task.id, "verifier": None, "attempts": [spec.key],
+            "pending_approvals": [a.id for a in brain.approvals.pending()],
+        })
+
     async def _approve_paid(self, command: str, spec: ModelSpec) -> bool:
         approval = self.brain.approvals.create(
             ApprovalRequest(

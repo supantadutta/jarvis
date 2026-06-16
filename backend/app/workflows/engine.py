@@ -131,11 +131,64 @@ class WorkflowEngine:
 
 
 class WorkflowScheduler:
-    """Lightweight scheduler scaffold. Phase 2 ships manual + interval triggers;
-    full cron parsing is handled by Arq/APScheduler in production."""
+    """Cron-driven scheduler. Phase 2 ships an in-process asyncio loop that ticks
+    once a minute and runs due `schedule`-trigger workflows; swap for Arq/
+    APScheduler when distributed execution is needed. Each workflow runs at most
+    once per matching minute (deduped by last-run minute)."""
 
     def __init__(self, engine: WorkflowEngine) -> None:
         self.engine = engine
+        self._last_run_minute: dict[str, str] = {}
+        self._task = None
+        self._stop = False
 
     def scheduled(self) -> list[dict]:
         return [workflow_public(w) for w in SEED_WORKFLOWS if w.trigger == "schedule"]
+
+    def due(self, now: datetime) -> list[str]:
+        """Keys of schedule-trigger workflows whose cron matches `now`."""
+        from app.workflows.cron import cron_match
+
+        keys: list[str] = []
+        for w in SEED_WORKFLOWS:
+            if w.trigger != "schedule" or not w.schedule:
+                continue
+            try:
+                if cron_match(w.schedule, now):
+                    keys.append(w.key)
+            except ValueError:
+                continue
+        return keys
+
+    async def run_due(self, now: datetime) -> list[str]:
+        """Run all due workflows not already run this minute; return ran keys."""
+        stamp = now.strftime("%Y-%m-%dT%H:%M")
+        ran: list[str] = []
+        for key in self.due(now):
+            if self._last_run_minute.get(key) == stamp:
+                continue
+            self._last_run_minute[key] = stamp
+            await self.engine.run(key)
+            ran.append(key)
+        return ran
+
+    async def start(self) -> None:  # pragma: no cover - background loop
+        import asyncio
+
+        self._stop = False
+
+        async def loop():
+            while not self._stop:
+                try:
+                    await self.run_due(datetime.now())
+                except Exception:  # noqa: BLE001
+                    pass
+                await asyncio.sleep(60)
+
+        self._task = asyncio.create_task(loop())
+
+    async def stop(self) -> None:  # pragma: no cover
+        self._stop = True
+        if self._task:
+            self._task.cancel()
+            self._task = None

@@ -81,6 +81,32 @@ class OpenAICompatibleProvider(LLMProvider):
             raw=data,
         )
 
+    async def stream(self, request: CompletionRequest):  # pragma: no cover - network
+        import json
+
+        payload = {
+            "model": request.model,
+            "messages": [{"role": m.role.value, "content": m.content} for m in request.messages],
+            "temperature": request.temperature,
+            "stream": True,
+        }
+        async with self._client() as client:
+            async with client.stream("POST", f"{self.base_url}/chat/completions", json=payload) as resp:
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data = line[6:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        obj = json.loads(data)
+                    except ValueError:
+                        continue
+                    delta = (obj.get("choices") or [{}])[0].get("delta", {})
+                    chunk = delta.get("content", "")
+                    if chunk:
+                        yield chunk
+
     async def health(self) -> bool:  # pragma: no cover - network
         return bool(self.api_key) or "localhost" in self.base_url
 

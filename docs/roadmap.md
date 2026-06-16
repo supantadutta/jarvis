@@ -63,11 +63,23 @@ Also implemented:
   `storage_state` encrypted at rest through the vault (DB holds only a pointer);
   round-trip tested.
 
-Remaining for Phase 2 completion:
-- Provider-level **token** streaming (vs. server-chunked) for streaming-capable
-  providers.
-- Redis/Arq background execution + **cron-driven** workflow scheduling.
-- End-to-end **voice** push-to-talk loop with voice confirmation on risky actions.
+Also implemented (Phase 2 now feature-complete for the local-first scope):
+- ✅ **Provider token streaming**: `stream()` on Mock/Ollama/OpenAI-compatible +
+  a `stream_text()` helper; the orchestrator's `stream_answer()` streams the
+  worker model's tokens natively for single-model modes (richer modes chunk the
+  orchestrated result). Wired into `POST /chat/stream` and the dashboard.
+- ✅ **Cron-driven scheduler**: a pure 5-field cron matcher + `WorkflowScheduler`
+  with `due()`/`run_due()` (deduped per minute) and an in-process asyncio loop
+  (started when `SCHEDULER_ENABLED=true`). Endpoints `GET /scheduler/due` and
+  `POST /scheduler/tick`.
+- ✅ **Voice command loop**: `POST /voice/command` routes a transcript through the
+  orchestrator (approvals still enforced); `GET /voice/status` reports STT
+  availability. Audio STT/TTS engines remain lazy (faster-whisper/Piper).
+
+Deferred to Phase 3+ (needs live infra to verify meaningfully):
+- Distributed background execution via **Redis/Arq** (current scheduler is
+  in-process).
+- Full audio capture → STT → TTS round-trip and wake-word.
 
 ## Phase 3 — Integrations
 

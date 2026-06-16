@@ -30,6 +30,14 @@ async def lifespan(app: FastAPI):
     get_brain()
     logger.info("JARVIS backend ready (env=%s).", settings.environment)
 
+    # Optionally start the cron workflow scheduler.
+    if settings.scheduler_enabled:
+        try:
+            await get_brain().scheduler.start()
+            logger.info("Workflow scheduler started.")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Scheduler not started: %s", exc)
+
     # Optionally start the Telegram bot.
     bot = None
     if settings.telegram_enabled and settings.telegram_bot_token:
@@ -44,6 +52,11 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    if settings.scheduler_enabled:
+        try:
+            await get_brain().scheduler.stop()
+        except Exception:  # noqa: BLE001
+            pass
     if bot is not None:
         try:
             await bot.stop()

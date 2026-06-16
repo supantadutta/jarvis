@@ -91,6 +91,9 @@ class Settings(BaseSettings):
     # --- Browser ---
     browser_headless: bool = False
 
+    # --- Workflow scheduler (cron-driven background loop) ---
+    scheduler_enabled: bool = False
+
     # --- parsed list properties ---
     @property
     def allowed_paths(self) -> list[str]:

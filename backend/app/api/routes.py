@@ -60,23 +60,10 @@ async def chat_stream(req: ChatRequest, brain: Brain = Depends(get_brain)):
         def sse(event: str, data: dict) -> str:
             return f"event: {event}\ndata: {_json.dumps(data)}\n\n"
 
-        cls = brain.supervisor.classify(req.message)
-        yield sse("classified", {"task_type": cls.task_type.value,
-                                 "mode": (mode_override or cls.mode).value})
-        result = await Orchestrator(brain).run(req.message, mode_override=mode_override)
-        yield sse("routed", {"models": result.models, "agents": result.agents})
-        if result.plan:
-            yield sse("plan", {"steps": result.plan})
-        # Stream the answer in word chunks.
-        words = result.answer.split(" ")
-        for i in range(0, len(words), 8):
-            yield sse("token", {"text": " ".join(words[i : i + 8]) + " "})
-        yield sse("done", {
-            "task_id": result.task_id,
-            "verifier": result.verifier,
-            "attempts": result.attempts,
-            "pending_approvals": result.pending_approvals,
-        })
+        async for event, data in Orchestrator(brain).stream_answer(
+            req.message, mode_override=mode_override
+        ):
+            yield sse(event, data)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 
@@ -228,6 +215,58 @@ async def memory_stats(brain: Brain = Depends(get_brain)) -> dict:
 @api_router.get("/audit", tags=["audit"])
 async def audit_log(limit: int = 100, brain: Brain = Depends(get_brain)) -> dict:
     return {"entries": [e.__dict__ for e in brain.audit.recent(limit)]}
+
+
+# --------------------------------------------------------------------------
+# voice (Phase 2 push-to-talk)
+# --------------------------------------------------------------------------
+@api_router.post("/voice/command", tags=["voice"])
+async def voice_command(req: ChatRequest, brain: Brain = Depends(get_brain)) -> dict:
+    """Route an already-transcribed voice command through the orchestrator.
+
+    Transcription happens client-side or via /voice/transcribe (faster-whisper).
+    Risky actions still go through the normal approval queue — voice never
+    bypasses approvals. `req.message` is the transcript."""
+    from app.agents.orchestrator import Orchestrator
+
+    result = await Orchestrator(brain).run(req.message, mode_override=_parse_mode(req.mode))
+    brain.audit.record(
+        agent="voice", tool="voice_command", input_summary=req.message,
+        output_summary=result.answer, risk="low", approval_status="auto",
+    )
+    return {
+        "transcript": req.message,
+        "task_id": result.task_id,
+        "answer": result.answer,
+        "pending_approvals": result.pending_approvals,
+    }
+
+
+@api_router.get("/voice/status", tags=["voice"])
+async def voice_status() -> dict:
+    from app.voice.engine import is_voice_available
+
+    return {"available": is_voice_available(), "engine": "faster-whisper"}
+
+
+# --------------------------------------------------------------------------
+# scheduler
+# --------------------------------------------------------------------------
+@api_router.get("/scheduler/due", tags=["workflows"])
+async def scheduler_due(brain: Brain = Depends(get_brain)) -> dict:
+    from datetime import datetime
+
+    now = datetime.now()
+    return {"now": now.isoformat(), "due": brain.scheduler.due(now)}
+
+
+@api_router.post("/scheduler/tick", tags=["workflows"])
+async def scheduler_tick(brain: Brain = Depends(get_brain)) -> dict:
+    """Manually run any due workflows now (for testing / on-demand)."""
+    from datetime import datetime
+
+    ran = await brain.scheduler.run_due(datetime.now())
+    return {"ran": ran}
 
 
 # --------------------------------------------------------------------------
