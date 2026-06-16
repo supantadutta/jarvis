@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Data / runtime (never commit local data, DBs, screenshots, audit)
+data/
+*.db
+*.sqlite3
+audit.jsonl
+
+# Secrets
+.env
+.env.local
+*.key
+*.pem
+
+# Node / frontend
+node_modules/
+.next/
+out/
+dist/
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

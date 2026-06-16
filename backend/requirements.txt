@@ -1,0 +1,33 @@
+# Core (Phase 1) — local-first, no paid APIs required
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+pydantic-settings>=2.2
+sqlmodel>=0.0.16
+httpx>=0.27
+python-multipart>=0.0.9
+
+# Tests
+pytest>=8.0
+pytest-asyncio>=0.23
+
+# --- Optional (enable per phase; not required for core or tests) ---
+# Phase 1 infra (scale-up):
+# psycopg[binary]>=3.1        # PostgreSQL
+# redis>=5.0                  # Redis
+# arq>=0.25                   # async task queue
+# chromadb>=0.5               # local vector store
+# qdrant-client>=1.9          # Qdrant vector store
+
+# Phase 2:
+# python-telegram-bot>=21.0   # Telegram
+# playwright>=1.43            # Browser automation
+# faster-whisper>=1.0         # Voice STT
+# mss>=9.0                    # Desktop screenshots
+# keyring>=25.0               # OS keychain credential backend
+# cryptography>=42.0          # Fernet vault
+
+# Phase 3:
+# python-docx>=1.1            # DOCX reports
+# reportlab>=4.1             # PDF reports
+# openpyxl>=3.1              # XLSX
