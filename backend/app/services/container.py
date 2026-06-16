@@ -57,6 +57,11 @@ class Brain:
         # --- router ---
         self.router = ModelRouter()
 
+        # --- self-evaluation (feeds router performance) ---
+        from app.eval.evaluations import EvaluationStore
+
+        self.evaluations = EvaluationStore()
+
         # --- stateful services ---
         self.memory = MemoryStore()
         self.tasks = TaskStore()
@@ -71,6 +76,11 @@ class Brain:
         self.tools = ToolRegistry()
         register_builtin_tools(self.tools)
         self.executor = ToolExecutor(self.tools, self.guard, self.approvals, self.audit)
+
+        # --- plugin system (opt-in; off by default) ---
+        from app.plugins.loader import PluginManager
+
+        self.plugins = PluginManager(self.tools)
 
         # --- Phase 2 capabilities (lazy/optional; degrade gracefully) ---
         from app.browser.controller import BrowserController

@@ -87,6 +87,9 @@ class Orchestrator:
         mode = mode_override or cls.mode
         private = mode == Mode.PRIVATE_MODE
 
+        # Feed learned performance into the router (self-evaluation loop).
+        brain.router.performance = brain.evaluations.to_router_performance()
+
         # Route models over the *healthy* enabled set; fall back to enabled if
         # no health info is available (e.g. provider down but still usable).
         req = _routing_request(cls, mode=mode)
@@ -190,6 +193,10 @@ class Orchestrator:
                 "issues": verdict.issues,
                 "summary": verdict.summary,
             }
+            # Record the verdict so the router learns which models do well here.
+            brain.evaluations.record(
+                vspec.key, cls.task_type, passed=verdict.passed, score=verdict.score
+            )
             # Supervisor composes a final answer incorporating verifier notes.
             sctx = self._ctx(command, vspec, private=private, memory_context=memory_context)
             answer = await brain.supervisor.compose_final(
@@ -275,6 +282,10 @@ class Orchestrator:
                 "issues": verdict.issues,
                 "summary": verdict.summary,
             }
+            self.brain.evaluations.record(
+                spec.key, self.brain.supervisor.classify(command).task_type,
+                passed=verdict.passed, score=verdict.score,
+            )
             if verdict.passed:
                 break
         return best_text, attempts, contributions, verifier_info

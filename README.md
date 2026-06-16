@@ -139,7 +139,7 @@ it 100% local.
 | Credential manager (metadata + masking + approval hook) | ✅ |
 | Next.js **dashboard** (chat, tasks, agents, models, approvals, tools, memory, workflows, audit, health) | ✅ |
 | Docker Compose, `.env.example`, Makefile, bootstrap/health scripts | ✅ |
-| **Tests** — 121 passing (permissions, router, tools, approvals, orchestrator, API, Phase 2) | ✅ |
+| **Tests** — 131 passing (permissions, router, tools, approvals, orchestrator, API, Phase 2) | ✅ |
 
 ### Phase 2 (in progress — see `docs/roadmap.md`)
 
@@ -168,6 +168,16 @@ it 100% local.
 | Email draft composer + RFC-5545 ICS calendar builder | ✅ tested |
 | WhatsApp Cloud API (official) payload builders + client scaffold | ✅ tested |
 | n8n webhook payload + trigger client scaffold | ✅ tested |
+
+### Phase 4 (in progress — see `docs/phase4.md`)
+
+| Area | Status |
+|------|--------|
+| Self-evaluation loop (verdicts → router performance) | ✅ tested |
+| Fine-tuning dataset export (tasks → redacted JSONL) | ✅ tested |
+| Plugin system (`*_plugin.py` register(); guard-gated) | ✅ tested |
+| MCP adapter (tool registry → `tools/list` manifest) | ✅ tested |
+| Wake word · Home Assistant · workflow marketplace | 🔮 design |
 
 The core and the **entire test suite run with only Python + SQLite + the mock
 provider** — no Ollama, no Postgres, no API keys required.

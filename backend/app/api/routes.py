@@ -383,6 +383,38 @@ async def integrations_email_draft(payload: dict) -> dict:
 
 
 # --------------------------------------------------------------------------
+# Phase 4: evaluations, dataset export, plugins, MCP manifest
+# --------------------------------------------------------------------------
+@api_router.get("/evaluations", tags=["eval"])
+async def evaluations(brain: Brain = Depends(get_brain)) -> dict:
+    return {"evaluations": brain.evaluations.summary()}
+
+
+@api_router.post("/dataset/export", tags=["eval"])
+async def dataset_export(payload: dict, brain: Brain = Depends(get_brain)) -> dict:
+    from datetime import datetime, timezone
+
+    from app.eval.dataset import export_tasks_jsonl
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    path = f"{brain.settings.notes_dir}/dataset-{ts}.jsonl"
+    n = export_tasks_jsonl(brain.tasks.all(limit=10000), path, system=payload.get("system"))
+    return {"path": path, "rows": n}
+
+
+@api_router.get("/plugins", tags=["plugins"])
+async def list_plugins(brain: Brain = Depends(get_brain)) -> dict:
+    return {"plugins": brain.plugins.summary()}
+
+
+@api_router.get("/mcp/manifest", tags=["mcp"])
+async def mcp_manifest(brain: Brain = Depends(get_brain)) -> dict:
+    from app.integrations.mcp import export_tool_manifest
+
+    return export_tool_manifest(brain.tools)
+
+
+# --------------------------------------------------------------------------
 # control (emergency stop) + health
 # --------------------------------------------------------------------------
 @api_router.post("/control/stop", tags=["control"])

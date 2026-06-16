@@ -103,7 +103,17 @@ Remaining for Phase 3 completion:
 - Inbound WhatsApp webhook handler (treating message bodies as untrusted data).
 - GitHub write operations (create repo / push / PR) end-to-end behind approval.
 
-## Phase 4 — Advanced
+## Phase 4 — Advanced  🚧 in progress
 
-- Wake word. Home Assistant. MCP adapter. Plugin system.
-- Advanced self-evaluation. Workflow marketplace. Fine-tuning dataset export.
+Implemented & tested (see `phase4.md`):
+- ✅ **Self-evaluation loop**: Verifier verdicts recorded per (model, task_type);
+  fed into the router's `performance` so routing learns. `GET /evaluations`.
+- ✅ **Fine-tuning dataset export**: completed tasks → redacted JSONL
+  (`POST /dataset/export`).
+- ✅ **Plugin system**: `*_plugin.py` with `register(registry)` adds tools without
+  touching core; still gated by the Permission Guard. `GET /plugins`.
+- ✅ **MCP adapter**: tool registry → MCP `tools/list` manifest with JSON Schema +
+  governance annotations (`GET /mcp/manifest`); external-server consumer scaffold.
+
+Design-only (future): wake word, Home Assistant integration, workflow
+marketplace (signed/sandboxed bundles with permission review).
