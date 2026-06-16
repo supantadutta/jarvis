@@ -81,11 +81,27 @@ Deferred to Phase 3+ (needs live infra to verify meaningfully):
   in-process).
 - Full audio capture → STT → TTS round-trip and wake-word.
 
-## Phase 3 — Integrations
+## Phase 3 — Integrations  🚧 in progress
 
-- WhatsApp Cloud API (official only). n8n integration.
-- Email/calendar. DOCX/PDF/XLSX generation. GitHub automation.
-- SOC/cybersecurity assistant modules (defensive).
+Implemented & tested in this release:
+- ✅ **Document generation**: Markdown (always) + **DOCX / PDF / XLSX** via lazy
+  python-docx / reportlab / openpyxl; wired into `create_docx_report`,
+  `create_pdf_report`, `create_xlsx_report` tools and `POST /documents/generate`.
+- ✅ **SOC / cybersecurity modules** (defensive): Windows Event ID explainer,
+  MITRE ATT&CK mapping, Splunk SPL + CrowdStrike LogScale + Sigma builders, IR
+  report skeleton; endpoints under `/soc/*`. See `soc_modules.md`.
+- ✅ **GitHub automation**: pure README/scaffold generator (`/integrations/readme`)
+  + approval-gated REST client scaffold.
+- ✅ **Email / calendar**: draft composer (drafts only; sending is HIGH_RISK +
+  approval) and RFC-5545 **ICS** event builder (`/integrations/email/draft`).
+- ✅ **WhatsApp Cloud API** (official only): message/template payload builders +
+  approval-gated `WhatsAppCloudClient` (no unofficial scraping).
+- ✅ **n8n**: webhook payload builder + `N8nClient` trigger scaffold.
+
+Remaining for Phase 3 completion:
+- Live OAuth for email/calendar providers (Gmail/Graph) behind the credential vault.
+- Inbound WhatsApp webhook handler (treating message bodies as untrusted data).
+- GitHub write operations (create repo / push / PR) end-to-end behind approval.
 
 ## Phase 4 — Advanced
 

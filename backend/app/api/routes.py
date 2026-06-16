@@ -293,6 +293,96 @@ async def workflow_runs(brain: Brain = Depends(get_brain)) -> dict:
 
 
 # --------------------------------------------------------------------------
+# SOC / cybersecurity (defensive, lab-authorized)
+# --------------------------------------------------------------------------
+@api_router.get("/soc/event/{event_id}", tags=["soc"])
+async def soc_event(event_id: int) -> dict:
+    from app.soc.defensive import explain_event_id
+
+    return explain_event_id(event_id)
+
+
+@api_router.post("/soc/attack-map", tags=["soc"])
+async def soc_attack_map(payload: dict) -> dict:
+    from app.soc.defensive import map_to_attack
+
+    return {"techniques": map_to_attack(payload.get("behavior", ""))}
+
+
+@api_router.post("/soc/splunk", tags=["soc"])
+async def soc_splunk(payload: dict) -> dict:
+    from app.soc.defensive import DetectionSpec, build_logscale_query, build_splunk_spl
+
+    spec = DetectionSpec(
+        index=payload.get("index", "*"),
+        event_id=payload.get("event_id"),
+        field_filters=payload.get("field_filters", {}),
+        threshold=payload.get("threshold"),
+        by_fields=payload.get("by_fields", []),
+    )
+    return {"spl": build_splunk_spl(spec), "logscale": build_logscale_query(spec)}
+
+
+# --------------------------------------------------------------------------
+# documents (Markdown/DOCX/PDF/XLSX generation)
+# --------------------------------------------------------------------------
+@api_router.post("/documents/generate", tags=["documents"])
+async def documents_generate(payload: dict, brain: Brain = Depends(get_brain)) -> dict:
+    from datetime import datetime, timezone
+
+    from app.documents.generators import DocumentModel, Section, generate
+
+    fmt = payload.get("format", "md")
+    title = payload.get("title", "document")
+    doc = DocumentModel(
+        title=title,
+        sections=[Section(**s) for s in payload.get("sections", [])]
+        or [Section(heading="Content", body=payload.get("content", ""))],
+        table_headers=payload.get("table_headers", []),
+        table_rows=payload.get("table_rows", []),
+    )
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    path = f"{brain.settings.notes_dir}/{title.replace('/', '_')}-{ts}.{fmt}"
+    try:
+        out = generate(doc, fmt, path)
+        return {"ok": True, "path": out}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, str(exc)) from exc
+
+
+# --------------------------------------------------------------------------
+# integrations (GitHub README, email/ICS drafts — drafts only, no send)
+# --------------------------------------------------------------------------
+@api_router.post("/integrations/readme", tags=["integrations"])
+async def integrations_readme(payload: dict) -> dict:
+    from app.integrations.github import ProjectInfo, build_readme
+
+    info = ProjectInfo(
+        name=payload.get("name", "project"),
+        description=payload.get("description", ""),
+        features=payload.get("features", []),
+        tech_stack=payload.get("tech_stack", []),
+        install_cmds=payload.get("install_cmds", []),
+        usage=payload.get("usage", ""),
+        license=payload.get("license", "MIT"),
+    )
+    return {"readme": build_readme(info)}
+
+
+@api_router.post("/integrations/email/draft", tags=["integrations"])
+async def integrations_email_draft(payload: dict) -> dict:
+    from app.integrations.email_calendar import compose_email_draft
+
+    draft = compose_email_draft(
+        to=payload.get("to", []), subject=payload.get("subject", ""),
+        body=payload.get("body", ""), cc=payload.get("cc"),
+        signature=payload.get("signature"),
+    )
+    # Drafts only — sending is a HIGH_RISK action handled via the approval queue.
+    return {"draft": draft.public(), "note": "Draft only; sending requires approval."}
+
+
+# --------------------------------------------------------------------------
 # control (emergency stop) + health
 # --------------------------------------------------------------------------
 @api_router.post("/control/stop", tags=["control"])

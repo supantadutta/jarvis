@@ -139,7 +139,7 @@ it 100% local.
 | Credential manager (metadata + masking + approval hook) | ✅ |
 | Next.js **dashboard** (chat, tasks, agents, models, approvals, tools, memory, workflows, audit, health) | ✅ |
 | Docker Compose, `.env.example`, Makefile, bootstrap/health scripts | ✅ |
-| **Tests** — 102 passing (permissions, router, tools, approvals, orchestrator, API, Phase 2) | ✅ |
+| **Tests** — 121 passing (permissions, router, tools, approvals, orchestrator, API, Phase 2) | ✅ |
 
 ### Phase 2 (in progress — see `docs/roadmap.md`)
 
@@ -157,6 +157,17 @@ it 100% local.
 | Persistence repository (tasks/approvals/audit/chat → SQLModel) | ✅ tested |
 | Write-through persistence · SSE streaming · encrypted browser sessions | ✅ tested |
 | Native token streaming · cron scheduler · voice command loop | ✅ tested |
+
+### Phase 3 (in progress — see `docs/roadmap.md`, `docs/soc_modules.md`)
+
+| Area | Status |
+|------|--------|
+| Document generation — Markdown + **DOCX/PDF/XLSX** (lazy libs) | ✅ tested |
+| **SOC** (defensive): Event ID explainer, ATT&CK mapping, Splunk/LogScale/Sigma | ✅ tested |
+| GitHub README/scaffold generator (+ approval-gated REST client) | ✅ tested |
+| Email draft composer + RFC-5545 ICS calendar builder | ✅ tested |
+| WhatsApp Cloud API (official) payload builders + client scaffold | ✅ tested |
+| n8n webhook payload + trigger client scaffold | ✅ tested |
 
 The core and the **entire test suite run with only Python + SQLite + the mock
 provider** — no Ollama, no Postgres, no API keys required.

@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     # --- Workflow scheduler (cron-driven background loop) ---
     scheduler_enabled: bool = False
 
+    # --- Phase 3 integrations (optional; outbound actions are approval-gated) ---
+    github_token: str | None = None
+    whatsapp_phone_number_id: str | None = None
+    whatsapp_access_token: str | None = None
+    n8n_base_url: str | None = None
+
     # --- parsed list properties ---
     @property
     def allowed_paths(self) -> list[str]:

@@ -154,20 +154,54 @@ async def _create_report_markdown(ctx: ToolContext, args: dict) -> ToolResult:
         return ToolResult(ok=False, error=str(exc))
 
 
-async def _create_docx_report(ctx: ToolContext, args: dict) -> ToolResult:
-    return ToolResult(
-        ok=False,
-        error="DOCX generation is a Phase 3 feature (install python-docx).",
-        summary="not available",
+def _doc_model(args: dict):
+    """Build a DocumentModel from tool args (title + content + optional table)."""
+    from app.documents.generators import DocumentModel, Section
+
+    return DocumentModel(
+        title=args.get("title", "report"),
+        sections=[Section(heading="Content", body=args.get("content", ""))],
+        table_headers=args.get("table_headers", []),
+        table_rows=args.get("table_rows", []),
     )
+
+
+def _doc_path(ctx: ToolContext, title: str, ext: str) -> str:
+    from datetime import datetime, timezone
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    safe = title.replace("/", "_")
+    return f"{ctx.settings.notes_dir}/{safe}-{ts}.{ext}"
+
+
+async def _create_docx_report(ctx: ToolContext, args: dict) -> ToolResult:
+    from app.documents.generators import write_docx
+
+    try:
+        path = write_docx(_doc_model(args), _doc_path(ctx, args.get("title", "report"), "docx"))
+        return ToolResult(ok=True, output=path, summary=f"DOCX saved: {path}", artifacts=[path])
+    except Exception as exc:  # noqa: BLE001
+        return ToolResult(ok=False, error=str(exc), summary="docx generation failed")
 
 
 async def _create_pdf_report(ctx: ToolContext, args: dict) -> ToolResult:
-    return ToolResult(
-        ok=False,
-        error="PDF generation is a Phase 3 feature (install reportlab/weasyprint).",
-        summary="not available",
-    )
+    from app.documents.generators import write_pdf
+
+    try:
+        path = write_pdf(_doc_model(args), _doc_path(ctx, args.get("title", "report"), "pdf"))
+        return ToolResult(ok=True, output=path, summary=f"PDF saved: {path}", artifacts=[path])
+    except Exception as exc:  # noqa: BLE001
+        return ToolResult(ok=False, error=str(exc), summary="pdf generation failed")
+
+
+async def _create_xlsx_report(ctx: ToolContext, args: dict) -> ToolResult:
+    from app.documents.generators import write_xlsx
+
+    try:
+        path = write_xlsx(_doc_model(args), _doc_path(ctx, args.get("title", "report"), "xlsx"))
+        return ToolResult(ok=True, output=path, summary=f"XLSX saved: {path}", artifacts=[path])
+    except Exception as exc:  # noqa: BLE001
+        return ToolResult(ok=False, error=str(exc), summary="xlsx generation failed")
 
 
 # --------------------------------------------------------------------------
@@ -463,6 +497,9 @@ def register_builtin_tools(registry: ToolRegistry) -> ToolRegistry:
     reg(name="create_pdf_report", description="Generate a PDF report (Phase 3).",
         permission=P.LOW_RISK_WRITE, risk=R.LOW, func=_create_pdf_report,
         input_schema={"title": "str", "content": "str"})
+    reg(name="create_xlsx_report", description="Generate an XLSX spreadsheet report (Phase 3).",
+        permission=P.LOW_RISK_WRITE, risk=R.LOW, func=_create_xlsx_report,
+        input_schema={"title": "str", "table_headers": "list", "table_rows": "list"})
 
     # --- BROWSER_READ ---
     reg(name="open_url_readonly", description="Open a URL and read visible text (read-only).",
