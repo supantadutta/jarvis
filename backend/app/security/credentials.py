@@ -57,6 +57,95 @@ class NullVault(VaultBackend):
         return None
 
 
+class FernetVault(VaultBackend):
+    """Phase 2: symmetric-encrypted file vault (cryptography/Fernet).
+
+    Stores `{vault_ref: token}` where the token is Fernet-encrypted. The key
+    should come from the OS keychain or a user passphrase — never committed.
+    `cryptography` is imported lazily so importing this module is free.
+    """
+
+    def __init__(self, key: bytes | str, store_path: str = "data/memory/vault.json") -> None:
+        try:
+            from cryptography.fernet import Fernet
+        except ImportError as exc:  # noqa: BLE001
+            raise RuntimeError("`pip install cryptography` to use FernetVault.") from exc
+        self._fernet = Fernet(key if isinstance(key, bytes) else key.encode())
+        self.store_path = store_path
+        self._cache: dict[str, str] = self._load()
+
+    @staticmethod
+    def generate_key() -> str:
+        from cryptography.fernet import Fernet
+
+        return Fernet.generate_key().decode()
+
+    def _load(self) -> dict[str, str]:
+        import json
+        from pathlib import Path
+
+        p = Path(self.store_path)
+        if p.exists():
+            try:
+                return json.loads(p.read_text())
+            except (OSError, ValueError):
+                return {}
+        return {}
+
+    def _persist(self) -> None:
+        import json
+        from pathlib import Path
+
+        p = Path(self.store_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(self._cache))
+
+    def get(self, vault_ref: str) -> str | None:
+        token = self._cache.get(vault_ref)
+        if token is None:
+            return None
+        return self._fernet.decrypt(token.encode()).decode()
+
+    def set(self, vault_ref: str, secret: str) -> None:
+        self._cache[vault_ref] = self._fernet.encrypt(secret.encode()).decode()
+        self._persist()
+
+    def delete(self, vault_ref: str) -> None:
+        self._cache.pop(vault_ref, None)
+        self._persist()
+
+
+class KeyringVault(VaultBackend):
+    """Phase 2: OS keychain backend (Windows Credential Manager / macOS Keychain
+    / Linux Secret Service) via the `keyring` package."""
+
+    SERVICE = "jarvis"
+
+    def __init__(self) -> None:
+        try:
+            import keyring  # noqa: F401
+        except ImportError as exc:  # noqa: BLE001
+            raise RuntimeError("`pip install keyring` to use KeyringVault.") from exc
+
+    def get(self, vault_ref: str) -> str | None:  # pragma: no cover - OS dependent
+        import keyring
+
+        return keyring.get_password(self.SERVICE, vault_ref)
+
+    def set(self, vault_ref: str, secret: str) -> None:  # pragma: no cover - OS dependent
+        import keyring
+
+        keyring.set_password(self.SERVICE, vault_ref, secret)
+
+    def delete(self, vault_ref: str) -> None:  # pragma: no cover - OS dependent
+        import keyring
+
+        try:
+            keyring.delete_password(self.SERVICE, vault_ref)
+        except Exception:  # noqa: BLE001
+            pass
+
+
 class CredentialManager:
     def __init__(self, vault: VaultBackend | None = None) -> None:
         self.vault = vault or NullVault()

@@ -70,6 +70,15 @@ class Brain:
         register_builtin_tools(self.tools)
         self.executor = ToolExecutor(self.tools, self.guard, self.approvals, self.audit)
 
+        # --- Phase 2 capabilities (lazy/optional; degrade gracefully) ---
+        from app.browser.controller import BrowserController
+
+        self.browser = BrowserController(
+            allowed_domains=self.settings.allowed_domains,
+            headless=self.settings.browser_headless,
+            screenshots_dir=self.settings.screenshots_dir,
+        )
+
         # --- agents ---
         self.supervisor = SupervisorAgent()
         self.planner = PlannerAgent()
@@ -162,4 +171,5 @@ class Brain:
             "tasks": self.tasks,
             "approvals": self.approvals,
             "audit": self.audit,
+            "browser": self.browser,
         }

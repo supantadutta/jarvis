@@ -15,6 +15,7 @@ from app.llm.base import (
     CompletionResponse,
     LLMProvider,
     ProviderError,
+    Role,
 )
 
 
@@ -84,31 +85,155 @@ class OpenAICompatibleProvider(LLMProvider):
         return bool(self.api_key) or "localhost" in self.base_url
 
 
+# --- pure wire-format builders/parsers (unit-tested without network) ---
+def build_anthropic_payload(request: CompletionRequest) -> dict:
+    """Map a CompletionRequest to the Anthropic Messages API body.
+
+    Anthropic takes a top-level `system` string and a `messages` list of
+    user/assistant turns (no system role inside messages)."""
+    system_parts = [m.content for m in request.messages if m.role == Role.SYSTEM]
+    turns = [
+        {"role": m.role.value, "content": m.content}
+        for m in request.messages
+        if m.role in (Role.USER, Role.ASSISTANT)
+    ]
+    payload: dict = {
+        "model": request.model,
+        "messages": turns,
+        "max_tokens": request.max_tokens or 1024,
+        "temperature": request.temperature,
+    }
+    if system_parts:
+        payload["system"] = "\n\n".join(system_parts)
+    if request.tools:
+        payload["tools"] = request.tools
+    return payload
+
+
+def parse_anthropic_response(data: dict) -> tuple[str, dict]:
+    """Extract text + usage from an Anthropic Messages API response."""
+    blocks = data.get("content", []) or []
+    text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+    usage = data.get("usage", {}) or {}
+    return text, {
+        "prompt_tokens": usage.get("input_tokens", 0),
+        "completion_tokens": usage.get("output_tokens", 0),
+        "finish_reason": data.get("stop_reason", "stop"),
+    }
+
+
+def build_gemini_payload(request: CompletionRequest) -> dict:
+    """Map a CompletionRequest to the Gemini generateContent body.
+
+    Gemini uses `contents` with roles user/model and an optional
+    `systemInstruction`."""
+    role_map = {Role.USER: "user", Role.ASSISTANT: "model"}
+    contents = [
+        {"role": role_map[m.role], "parts": [{"text": m.content}]}
+        for m in request.messages
+        if m.role in role_map
+    ]
+    payload: dict = {
+        "contents": contents,
+        "generationConfig": {"temperature": request.temperature},
+    }
+    if request.max_tokens:
+        payload["generationConfig"]["maxOutputTokens"] = request.max_tokens
+    if request.json_mode:
+        payload["generationConfig"]["responseMimeType"] = "application/json"
+    system_parts = [m.content for m in request.messages if m.role == Role.SYSTEM]
+    if system_parts:
+        payload["systemInstruction"] = {"parts": [{"text": "\n\n".join(system_parts)}]}
+    return payload
+
+
+def parse_gemini_response(data: dict) -> tuple[str, dict]:
+    candidates = data.get("candidates", []) or []
+    text = ""
+    if candidates:
+        parts = (candidates[0].get("content", {}) or {}).get("parts", []) or []
+        text = "".join(p.get("text", "") for p in parts)
+    usage = data.get("usageMetadata", {}) or {}
+    return text, {
+        "prompt_tokens": usage.get("promptTokenCount", 0),
+        "completion_tokens": usage.get("candidatesTokenCount", 0),
+        "finish_reason": (candidates[0].get("finishReason", "stop") if candidates else "stop"),
+    }
+
+
 class AnthropicProvider(LLMProvider):
-    """Stub — implement the Messages API in Phase 2."""
+    """Anthropic Messages API (anthropic-version 2023-06-01)."""
 
     name = "anthropic"
+    API_VERSION = "2023-06-01"
 
-    def __init__(self, api_key: str | None) -> None:
+    def __init__(self, api_key: str | None, base_url: str = "https://api.anthropic.com/v1") -> None:
         self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
 
     async def complete(self, request: CompletionRequest) -> CompletionResponse:  # pragma: no cover
-        raise ProviderError("AnthropicProvider is scaffolded; implement in Phase 2.")
+        if not self.api_key:
+            raise ProviderError("anthropic: no API key configured.")
+        try:
+            import httpx
+        except ImportError as exc:  # noqa: BLE001
+            raise ProviderError("httpx is required for the Anthropic provider.") from exc
+        headers = {
+            "x-api-key": self.api_key,
+            "anthropic-version": self.API_VERSION,
+            "content-type": "application/json",
+        }
+        async with httpx.AsyncClient(timeout=120.0, headers=headers) as client:
+            try:
+                resp = await client.post(
+                    f"{self.base_url}/messages", json=build_anthropic_payload(request)
+                )
+                resp.raise_for_status()
+            except Exception as exc:  # noqa: BLE001
+                raise ProviderError(f"anthropic request failed: {exc}") from exc
+            data = resp.json()
+        text, meta = parse_anthropic_response(data)
+        return CompletionResponse(
+            text=text, model=request.model, provider=self.name,
+            prompt_tokens=meta["prompt_tokens"], completion_tokens=meta["completion_tokens"],
+            finish_reason=meta["finish_reason"], raw=data,
+        )
 
     async def health(self) -> bool:  # pragma: no cover
         return bool(self.api_key)
 
 
 class GeminiProvider(LLMProvider):
-    """Stub — implement the Generative Language API in Phase 2."""
+    """Google Gemini Generative Language API (generateContent)."""
 
     name = "google"
 
-    def __init__(self, api_key: str | None) -> None:
+    def __init__(self, api_key: str | None,
+                 base_url: str = "https://generativelanguage.googleapis.com/v1beta") -> None:
         self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
 
     async def complete(self, request: CompletionRequest) -> CompletionResponse:  # pragma: no cover
-        raise ProviderError("GeminiProvider is scaffolded; implement in Phase 2.")
+        if not self.api_key:
+            raise ProviderError("google: no API key configured.")
+        try:
+            import httpx
+        except ImportError as exc:  # noqa: BLE001
+            raise ProviderError("httpx is required for the Gemini provider.") from exc
+        url = f"{self.base_url}/models/{request.model}:generateContent?key={self.api_key}"
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            try:
+                resp = await client.post(url, json=build_gemini_payload(request))
+                resp.raise_for_status()
+            except Exception as exc:  # noqa: BLE001
+                raise ProviderError(f"gemini request failed: {exc}") from exc
+            data = resp.json()
+        text, meta = parse_gemini_response(data)
+        return CompletionResponse(
+            text=text, model=request.model, provider=self.name,
+            prompt_tokens=meta["prompt_tokens"], completion_tokens=meta["completion_tokens"],
+            finish_reason=meta["finish_reason"], raw=data,
+        )
 
     async def health(self) -> bool:  # pragma: no cover
         return bool(self.api_key)

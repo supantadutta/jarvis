@@ -136,10 +136,23 @@ it 100% local.
 | **Prompt-injection defense** (untrusted wrapping + scanner) | ✅ |
 | Local **RAG/memory** (dependency-free lexical retriever; Chroma/Qdrant later) | ✅ |
 | **Telegram bot** scaffold (allowlist + commands + orchestrator) | ✅ |
-| Credential manager (metadata + masking + approval hook) | ✅ scaffold |
+| Credential manager (metadata + masking + approval hook) | ✅ |
 | Next.js **dashboard** (chat, tasks, agents, models, approvals, tools, memory, workflows, audit, health) | ✅ |
 | Docker Compose, `.env.example`, Makefile, bootstrap/health scripts | ✅ |
-| **Tests** — 59 passing (permissions, router, tools, approvals, orchestrator, API) | ✅ |
+| **Tests** — 78 passing (permissions, router, tools, approvals, orchestrator, API, Phase 2) | ✅ |
+
+### Phase 2 (in progress — see `docs/roadmap.md`)
+
+| Area | Status |
+|------|--------|
+| Anthropic Messages API + Gemini generateContent wire formats (pure, tested) | ✅ |
+| CASCADE / COST_SAVER escalation (verifier-gated; paid hop needs approval) | ✅ tested |
+| SPECIALIST_TEAM multi-agent fan-out | ✅ tested |
+| Browser controller (Playwright, lazy) + domain allowlist | ✅ tested |
+| Credential vaults — `FernetVault` (encrypted, tested) + `KeyringVault` | ✅ |
+| Desktop controller (Windows-first) — app allowlist + PowerShell gate | ✅ tested |
+| Voice engines — faster-whisper STT + Piper TTS (lazy scaffold) | ✅ scaffold |
+| Streaming · persistent browser sessions · DB persistence · scheduler | ⏳ next |
 
 The core and the **entire test suite run with only Python + SQLite + the mock
 provider** — no Ollama, no Postgres, no API keys required.

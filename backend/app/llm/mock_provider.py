@@ -57,11 +57,14 @@ class MockProvider(LLMProvider):
                 ]
             }
         elif "verify" in low or "critique" in low:
+            # Deterministic for tests: a candidate containing "weak"/"wrong"
+            # fails verification, which drives cascade/cost-saver escalation.
+            failed = "weak" in low or "wrong" in low
             payload = {
-                "passed": True,
-                "score": 0.9,
-                "issues": [],
-                "summary": "Output looks correct, safe, and complete.",
+                "passed": not failed,
+                "score": 0.3 if failed else 0.9,
+                "issues": ["answer is weak/incomplete"] if failed else [],
+                "summary": "Needs a stronger model." if failed else "Correct, safe, complete.",
             }
         else:
             payload = {"result": f"mock structured result for {request.model}"}

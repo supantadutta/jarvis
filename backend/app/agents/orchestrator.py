@@ -10,9 +10,10 @@ from dataclasses import dataclass, field
 
 from app.agents.base import AgentContext, AgentResult
 from app.agents.supervisor import Classification
-from app.llm.registry import ModelSpec, TaskType
+from app.llm.registry import CostType, ModelSpec, TaskType
 from app.model_router.modes import MULTI_MODEL_MODES, Mode
 from app.model_router.router import CostSetting, RoutingRequest, RoutingResult
+from app.services.approvals import ApprovalQueue, ApprovalRequest
 from app.services.container import Brain
 from app.services.tasks import TaskStatus, TaskStep
 
@@ -29,6 +30,7 @@ class OrchestratorResult:
     verifier: dict | None = None
     candidates: list[dict] = field(default_factory=list)
     pending_approvals: list[str] = field(default_factory=list)
+    attempts: list[str] = field(default_factory=list)  # models tried, in order
 
 
 # Map a task type to routing requirements.
@@ -42,10 +44,18 @@ def _routing_request(cls: Classification, *, mode: Mode) -> RoutingRequest:
         cost = CostSetting.ALLOW_PAID
     speed = 5 if mode == Mode.FAST_MODE else 2
     min_reason = 4 if mode == Mode.DEEP_WORK_MODE else (1 if mode == Mode.FAST_MODE else 2)
+    # Cascade/cost-saver are explicitly allowed to escalate to cloud (approval
+    # gates the paid hop), so they don't impose the default privacy floor.
+    if mode == Mode.PRIVATE_MODE:
+        privacy_required = 5
+    elif mode in (Mode.CASCADE_MODE, Mode.COST_SAVER_MODE):
+        privacy_required = 1
+    else:
+        privacy_required = 2
     return RoutingRequest(
         task_type=tt,
         mode=mode,
-        privacy_required=2 if mode != Mode.PRIVATE_MODE else 5,
+        privacy_required=privacy_required,
         min_reasoning=min_reason,
         min_coding=4 if needs_code else 0,
         speed_priority=speed,
@@ -56,8 +66,9 @@ def _routing_request(cls: Classification, *, mode: Mode) -> RoutingRequest:
 
 
 class Orchestrator:
-    def __init__(self, brain: Brain) -> None:
+    def __init__(self, brain: Brain, *, approval_timeout: float | None = 300.0) -> None:
         self.brain = brain
+        self._approval_timeout = approval_timeout
 
     def _ctx(self, command: str, spec: ModelSpec, *, private: bool, memory_context: str = "") -> AgentContext:
         provider = self.brain.provider_for(spec)
@@ -122,6 +133,8 @@ class Orchestrator:
         # --- execute by mode ---
         candidates: list[dict] = []
         contributions: list[AgentResult] = []
+        attempts: list[str] = []
+        verifier_info: dict | None = None
         worker = self._pick_worker(team)
 
         if mode in MULTI_MODEL_MODES:
@@ -130,17 +143,34 @@ class Orchestrator:
                 res = await worker.run(ctx)
                 candidates.append({"model": spec.key, "text": res.text})
                 contributions.append(res)
+                attempts.append(spec.key)
+        elif mode == Mode.SPECIALIST_TEAM_MODE:
+            primary = routing.selected[0]
+            specialists = [k for k in team if k not in ("supervisor", "planner", "verifier")]
+            for key in specialists or ["supervisor"]:
+                agent = brain.agents.get(key, brain.supervisor)
+                ctx = self._ctx(command, primary, private=private, memory_context=memory_context)
+                res = await agent.run(ctx)
+                contributions.append(res)
+                attempts.append(f"{key}:{primary.key}")
+            candidates.append({"model": primary.key, "text": contributions[-1].text})
+        elif mode in (Mode.CASCADE_MODE, Mode.COST_SAVER_MODE):
+            best_text, attempts, contributions, verifier_info = await self._cascade(
+                command, routing.selected, worker, private, memory_context, mode
+            )
+            last_model = attempts[-1] if attempts else routing.selected[0].key
+            candidates.append({"model": last_model, "text": best_text})
         else:
             spec = routing.selected[0]
             ctx = self._ctx(command, spec, private=private, memory_context=memory_context)
             res = await worker.run(ctx)
             contributions.append(res)
             candidates.append({"model": spec.key, "text": res.text})
+            attempts.append(spec.key)
 
         task.status = TaskStatus.VERIFYING
 
         # --- pick / merge answer ---
-        verifier_info: dict | None = None
         chosen_index = 0
         vspec = routing.selected[0]
         vctx = self._ctx(command, vspec, private=private)
@@ -148,7 +178,7 @@ class Orchestrator:
         if mode == Mode.DEBATE_MODE and len(candidates) > 1:
             chosen_index = await brain.verifier.judge(vctx, command=command, candidates=candidates)
 
-        answer = candidates[chosen_index]["text"]
+        answer = candidates[chosen_index]["text"] if candidates else ""
 
         if mode in (Mode.DEEP_WORK_MODE, Mode.VERIFIER_MODE, Mode.DEBATE_MODE):
             verdict = await brain.verifier.verify(vctx, command=command, answer=answer)
@@ -196,6 +226,7 @@ class Orchestrator:
             verifier=verifier_info,
             candidates=candidates if mode in MULTI_MODEL_MODES else [],
             pending_approvals=[a.id for a in brain.approvals.pending()],
+            attempts=attempts,
         )
 
     def _pick_worker(self, team: list[str]):
@@ -204,3 +235,58 @@ class Orchestrator:
             if key not in ("supervisor", "planner", "verifier"):
                 return self.brain.agents.get(key, self.brain.supervisor)
         return self.brain.supervisor
+
+    async def _cascade(
+        self,
+        command: str,
+        specs: list[ModelSpec],
+        worker,
+        private: bool,
+        memory_context: str,
+        mode: Mode,
+    ) -> tuple[str, list[str], list[AgentResult], dict | None]:
+        """Try models cheapest/local-first; verify each; stop when it passes.
+        In COST_SAVER_MODE, escalating to a PAID model first requires approval."""
+        attempts: list[str] = []
+        contributions: list[AgentResult] = []
+        verifier_info: dict | None = None
+        best_text = ""
+        for spec in specs:
+            if mode == Mode.COST_SAVER_MODE and spec.cost_type == CostType.PAID:
+                if not await self._approve_paid(command, spec):
+                    break  # keep the best local answer so far
+            ctx = self._ctx(command, spec, private=private, memory_context=memory_context)
+            res = await worker.run(ctx)
+            attempts.append(spec.key)
+            contributions.append(res)
+            best_text = res.text
+            vctx = self._ctx(command, spec, private=private)
+            verdict = await self.brain.verifier.verify(vctx, command=command, answer=res.text)
+            verifier_info = {
+                "passed": verdict.passed,
+                "score": verdict.score,
+                "issues": verdict.issues,
+                "summary": verdict.summary,
+            }
+            if verdict.passed:
+                break
+        return best_text, attempts, contributions, verifier_info
+
+    async def _approve_paid(self, command: str, spec: ModelSpec) -> bool:
+        approval = self.brain.approvals.create(
+            ApprovalRequest(
+                task_name="cost-saver escalation",
+                requested_action=f"Escalate to paid cloud model {spec.key}",
+                agent="supervisor",
+                model=spec.key,
+                tool="llm_call",
+                account=spec.provider,
+                credential=None,
+                risk="medium",
+                what_can_change="Sends your prompt to a paid cloud provider (leaves the machine).",
+                action_preview=f"Use {spec.display_name} ({spec.cost_type.value}) for: {command[:80]}",
+                allow_trust=True,
+            )
+        )
+        resolved = await self.brain.approvals.wait(approval.id, timeout=self._approval_timeout)
+        return ApprovalQueue.is_granted(resolved)
