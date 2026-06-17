@@ -265,7 +265,8 @@ class Orchestrator:
         contributions: list[AgentResult] = []
         verifier_info: dict | None = None
         best_text = ""
-        for spec in specs:
+        budget = getattr(self.brain.settings, "max_cascade_attempts", 4)
+        for spec in specs[:budget]:
             if mode == Mode.COST_SAVER_MODE and spec.cost_type == CostType.PAID:
                 if not await self._approve_paid(command, spec):
                     break  # keep the best local answer so far

@@ -8,8 +8,10 @@ const PAGES = [
   ["/approvals", "Approvals"],
   ["/tools", "Tools"],
   ["/memory", "Memory"],
+  ["/documents", "Documents"],
   ["/workflows", "Workflows"],
   ["/soc", "SOC"],
+  ["/evaluations", "Evaluations"],
   ["/audit", "Audit"],
   ["/health", "Health"],
 ];

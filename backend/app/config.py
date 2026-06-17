@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     # --- Workflow scheduler (cron-driven background loop) ---
     scheduler_enabled: bool = False
 
+    # --- safety: cap how many models a cascade/cost-saver run may try ---
+    max_cascade_attempts: int = 4
+
     # --- Phase 3 integrations (optional; outbound actions are approval-gated) ---
     github_token: str | None = None
     whatsapp_phone_number_id: str | None = None

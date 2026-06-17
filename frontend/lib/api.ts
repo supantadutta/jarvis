@@ -63,4 +63,9 @@ export const api = {
     http<any>("/memory/search", { method: "POST", body: JSON.stringify({ query }) }),
   emergencyStop: (engaged: boolean) =>
     http<any>("/control/stop", { method: "POST", body: JSON.stringify({ engaged }) }),
+  evaluations: () => http<any>("/evaluations"),
+  plugins: () => http<any>("/plugins"),
+  generateDocument: (body: any) =>
+    http<any>("/documents/generate", { method: "POST", body: JSON.stringify(body) }),
+  socEvent: (id: number) => http<any>(`/soc/event/${id}`),
 };

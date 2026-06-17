@@ -40,6 +40,7 @@ async def test_cost_saver_requires_approval_before_paid(brain):
     # Cost-saver escalates locally first; when it reaches a PAID model it must
     # create an approval. With a tiny timeout and no approver, it expires and
     # the cascade stops — but the approval was created (audit trail).
+    brain.settings.max_cascade_attempts = 10  # allow reaching the paid hop
     orch = Orchestrator(brain, approval_timeout=0.05)
     result = await orch.run("produce a weak answer", mode_override=Mode.COST_SAVER_MODE)
     approvals = brain.approvals.all()
@@ -52,6 +53,7 @@ async def test_cost_saver_requires_approval_before_paid(brain):
 
 @pytest.mark.asyncio
 async def test_cost_saver_proceeds_to_paid_when_approved(brain):
+    brain.settings.max_cascade_attempts = 10  # allow reaching the paid hop
     orch = Orchestrator(brain, approval_timeout=2.0)
 
     async def approve_paid_hops():
