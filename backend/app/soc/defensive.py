@@ -34,6 +34,12 @@ WINDOWS_EVENT_IDS: dict[int, dict] = {
            "notes": "Anomalous encryption types can indicate Kerberoasting."},
     7045: {"name": "A new service was installed", "category": "Service",
            "notes": "New services are a common persistence mechanism."},
+    4740: {"name": "User account locked out", "category": "Account Management",
+           "notes": "Correlate with 4625 bursts (brute force / spray)."},
+    4698: {"name": "Scheduled task created", "category": "Persistence",
+           "notes": "Scheduled tasks are a common persistence mechanism."},
+    1102: {"name": "The audit log was cleared", "category": "Log Management",
+           "notes": "Anti-forensics indicator; alert on any occurrence."},
 }
 
 
@@ -59,6 +65,10 @@ ATTACK_TECHNIQUES: dict[str, dict] = {
               "detections": ["4624 LogonType 10 (RDP)", "4648 explicit creds"]},
     "T1003": {"name": "OS Credential Dumping", "tactic": "Credential Access",
               "detections": ["LSASS access", "4769 anomalous (Kerberoasting)"]},
+    "T1053": {"name": "Scheduled Task/Job", "tactic": "Persistence / Execution",
+              "detections": ["4698 task created", "schtasks in 4688 command line"]},
+    "T1070": {"name": "Indicator Removal", "tactic": "Defense Evasion",
+              "detections": ["1102 audit log cleared", "wevtutil/Clear-EventLog usage"]},
 }
 
 # Keyword → technique hints, for mapping a free-text behavior description.
@@ -68,6 +78,8 @@ _BEHAVIOR_HINTS: list[tuple[tuple[str, ...], str]] = [
     (("rdp", "lateral", "remote desktop", "psexec"), "T1021"),
     (("new service", "service install", "persistence"), "T1543"),
     (("lsass", "mimikatz", "credential dump", "kerberoast"), "T1003"),
+    (("scheduled task", "schtasks", "cron job"), "T1053"),
+    (("cleared the log", "audit log cleared", "wevtutil", "clear-eventlog"), "T1070"),
     (("off-hours", "valid account", "stolen credential", "impossible travel"), "T1078"),
 ]
 
@@ -156,3 +168,31 @@ def incident_report_template(*, title: str, severity: str = "medium") -> dict:
             "Root cause", "Lessons learned / detections to add",
         ],
     }
+
+
+def build_suricata_rule(*, msg: str, dest_port: int | None = None,
+                        content: str | None = None, sid: int = 1000001,
+                        proto: str = "tcp") -> str:
+    """Build a defensive Suricata IDS rule (alert-only)."""
+    options = [f'msg:"{msg}"']
+    if content:
+        options.append(f'content:"{content}"')
+    options.append("classtype:policy-violation")
+    options.append(f"sid:{sid}")
+    options.append("rev:1")
+    port = dest_port if dest_port is not None else "any"
+    opts = "; ".join(options)
+    return f"alert {proto} any any -> any {port} ({opts};)"
+
+
+def build_wazuh_rule(*, rule_id: int, level: int, description: str,
+                     if_sid: int | None = None, field_match: dict | None = None) -> str:
+    """Build a Wazuh local rule XML snippet (detection only)."""
+    lines = [f'<rule id="{rule_id}" level="{level}">']
+    if if_sid is not None:
+        lines.append(f"  <if_sid>{if_sid}</if_sid>")
+    for k, v in (field_match or {}).items():
+        lines.append(f'  <field name="{k}">{v}</field>')
+    lines.append(f"  <description>{description}</description>")
+    lines.append("</rule>")
+    return "\n".join(lines)

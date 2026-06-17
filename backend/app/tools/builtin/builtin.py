@@ -205,6 +205,91 @@ async def _create_xlsx_report(ctx: ToolContext, args: dict) -> ToolResult:
 
 
 # --------------------------------------------------------------------------
+# Phase 3 integration tools (defensive SOC / docs / comms)
+# --------------------------------------------------------------------------
+async def _build_soc_query(ctx: ToolContext, args: dict) -> ToolResult:
+    from app.soc.defensive import DetectionSpec, build_logscale_query, build_splunk_spl
+
+    spec = DetectionSpec(
+        index=args.get("index", "*"), event_id=args.get("event_id"),
+        field_filters=args.get("field_filters", {}), threshold=args.get("threshold"),
+        by_fields=args.get("by_fields", []),
+    )
+    return ToolResult(
+        ok=True,
+        output={"spl": build_splunk_spl(spec), "logscale": build_logscale_query(spec)},
+        summary="Built defensive SOC queries.",
+    )
+
+
+async def _generate_readme(ctx: ToolContext, args: dict) -> ToolResult:
+    from app.integrations.github import ProjectInfo, build_readme
+
+    readme = build_readme(ProjectInfo(
+        name=args.get("name", "project"), description=args.get("description", ""),
+        features=args.get("features", []), tech_stack=args.get("tech_stack", []),
+        install_cmds=args.get("install_cmds", []), usage=args.get("usage", ""),
+        license=args.get("license", "MIT"),
+    ))
+    return ToolResult(ok=True, output=readme, summary="Generated README.")
+
+
+async def _compose_email_draft(ctx: ToolContext, args: dict) -> ToolResult:
+    from app.integrations.email_calendar import compose_email_draft
+
+    draft = compose_email_draft(
+        to=args.get("to", []), subject=args.get("subject", ""),
+        body=args.get("body", ""), cc=args.get("cc"), signature=args.get("signature"),
+    )
+    return ToolResult(ok=True, output=draft.public(), summary="Composed email draft (not sent).")
+
+
+async def _create_calendar_event(ctx: ToolContext, args: dict) -> ToolResult:
+    from datetime import datetime
+
+    from app.integrations.email_calendar import build_ics_event
+
+    try:
+        start = datetime.fromisoformat(args["start"])
+        end = datetime.fromisoformat(args["end"])
+    except (KeyError, ValueError) as exc:
+        return ToolResult(ok=False, error=f"start/end must be ISO datetimes: {exc}")
+    ics = build_ics_event(summary=args.get("summary", "Event"), start=start, end=end,
+                          description=args.get("description", ""), location=args.get("location", ""))
+    from pathlib import Path
+
+    notes = Path(ctx.settings.notes_dir)
+    notes.mkdir(parents=True, exist_ok=True)
+    path = notes / f"{args.get('summary', 'event').replace('/', '_')}.ics"
+    path.write_text(ics, encoding="utf-8")
+    return ToolResult(ok=True, output=str(path), summary="Created ICS event.", artifacts=[str(path)])
+
+
+async def _send_email_after_approval(ctx: ToolContext, args: dict) -> ToolResult:
+    # Guard already required approval (HIGH_RISK). Real SMTP/OAuth send is Phase 3+.
+    return ToolResult(
+        ok=False,
+        error="Email sending requires a configured provider (Gmail/Graph OAuth) — Phase 3+.",
+        summary="send not configured",
+    )
+
+
+async def _send_whatsapp_after_approval(ctx: ToolContext, args: dict) -> ToolResult:
+    return ToolResult(
+        ok=False,
+        error="WhatsApp Cloud API send requires WHATSAPP_* configuration.",
+        summary="whatsapp not configured",
+    )
+
+
+async def _trigger_n8n_after_approval(ctx: ToolContext, args: dict) -> ToolResult:
+    return ToolResult(
+        ok=False, error="n8n trigger requires N8N_BASE_URL configuration.",
+        summary="n8n not configured",
+    )
+
+
+# --------------------------------------------------------------------------
 # memory tools
 # --------------------------------------------------------------------------
 async def _add_memory(ctx: ToolContext, args: dict) -> ToolResult:
@@ -500,6 +585,32 @@ def register_builtin_tools(registry: ToolRegistry) -> ToolRegistry:
     reg(name="create_xlsx_report", description="Generate an XLSX spreadsheet report (Phase 3).",
         permission=P.LOW_RISK_WRITE, risk=R.LOW, func=_create_xlsx_report,
         input_schema={"title": "str", "table_headers": "list", "table_rows": "list"})
+
+    # --- Phase 3 integrations ---
+    reg(name="build_soc_query", description="Build defensive Splunk/LogScale detection queries.",
+        permission=P.SAFE_READ, risk=R.NONE, func=_build_soc_query,
+        input_schema={"index": "str?", "event_id": "int?", "by_fields": "list?", "threshold": "int?"})
+    reg(name="generate_readme", description="Generate a project README from structured info.",
+        permission=P.SAFE_READ, risk=R.NONE, func=_generate_readme,
+        input_schema={"name": "str", "description": "str?", "features": "list?"})
+    reg(name="compose_email_draft", description="Compose an email draft (not sent).",
+        permission=P.SAFE_READ, risk=R.NONE, func=_compose_email_draft,
+        input_schema={"to": "list", "subject": "str", "body": "str"})
+    reg(name="create_calendar_event", description="Create an ICS calendar event file.",
+        permission=P.LOW_RISK_WRITE, risk=R.LOW, func=_create_calendar_event,
+        input_schema={"summary": "str", "start": "str", "end": "str"})
+    reg(name="send_email_after_approval", description="Send an email (HIGH_RISK; approval required).",
+        permission=P.HIGH_RISK, risk=R.HIGH, requires_approval=True, uses_credential=True,
+        func=_send_email_after_approval, is_irreversible=True,
+        input_schema={"to": "list", "subject": "str", "body": "str"})
+    reg(name="send_whatsapp_after_approval",
+        description="Send a WhatsApp message via the official Cloud API (approval required).",
+        permission=P.HIGH_RISK, risk=R.HIGH, requires_approval=True, uses_credential=True,
+        func=_send_whatsapp_after_approval, is_irreversible=True,
+        input_schema={"to": "str", "body": "str"})
+    reg(name="trigger_n8n_after_approval", description="Trigger an n8n workflow webhook (approval).",
+        permission=P.NETWORK_ACCESS, risk=R.MEDIUM, requires_approval=True,
+        func=_trigger_n8n_after_approval, input_schema={"webhook": "str", "data": "dict?"})
 
     # --- BROWSER_READ ---
     reg(name="open_url_readonly", description="Open a URL and read visible text (read-only).",
