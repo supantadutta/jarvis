@@ -97,6 +97,11 @@ class Brain:
             screenshots_dir=self.settings.screenshots_dir,
         )
 
+        # --- credentials (metadata only; secrets live in the vault) ---
+        from app.security.credentials import CredentialManager
+
+        self.credentials = CredentialManager()
+
         # --- workflows ---
         from app.workflows.engine import WorkflowEngine, WorkflowScheduler
 

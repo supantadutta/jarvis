@@ -415,6 +415,58 @@ async def mcp_manifest(brain: Brain = Depends(get_brain)) -> dict:
 
 
 # --------------------------------------------------------------------------
+# settings (non-secret config summary) + credentials (masked metadata)
+# --------------------------------------------------------------------------
+@api_router.get("/settings", tags=["settings"])
+async def get_settings_summary(brain: Brain = Depends(get_brain)) -> dict:
+    s = brain.settings
+    # Never return secret values — only whether a provider is configured.
+    return {
+        "app_name": s.app_name,
+        "environment": s.environment,
+        "default_mode": s.default_mode,
+        "vector_backend": s.vector_backend,
+        "allow_low_risk_write": s.allow_low_risk_write,
+        "trusted_terminal_read": s.trusted_terminal_read,
+        "allow_network": s.allow_network,
+        "max_cascade_attempts": s.max_cascade_attempts,
+        "scheduler_enabled": s.scheduler_enabled,
+        "telegram_enabled": s.telegram_enabled,
+        "voice_enabled": s.voice_enabled,
+        "browser_headless": s.browser_headless,
+        "allowed_domains": s.allowed_domains,
+        "allowed_paths_count": len(s.allowed_paths),
+        "providers_configured": {
+            "ollama": True,
+            "openai": bool(s.openai_api_key),
+            "anthropic": bool(s.anthropic_api_key),
+            "google": bool(s.google_api_key),
+            "groq": bool(s.groq_api_key),
+            "openrouter": bool(s.openrouter_api_key),
+            "github": bool(s.github_token),
+            "whatsapp": bool(s.whatsapp_access_token),
+            "n8n": bool(s.n8n_base_url),
+        },
+    }
+
+
+@api_router.get("/credentials", tags=["credentials"])
+async def list_credentials(brain: Brain = Depends(get_brain)) -> dict:
+    # Metadata only; usernames masked; secret values never present.
+    return {"credentials": brain.credentials.list_public()}
+
+
+@api_router.post("/credentials/{name}/revoke", tags=["credentials"])
+async def revoke_credential(name: str, brain: Brain = Depends(get_brain)) -> dict:
+    ok = brain.credentials.revoke(name)
+    if not ok:
+        raise HTTPException(404, "Credential not found")
+    brain.audit.record(agent="credential", tool="revoke",
+                       output_summary=f"revoked credential {name}", risk="medium")
+    return {"name": name, "revoked": True}
+
+
+# --------------------------------------------------------------------------
 # control (emergency stop) + health
 # --------------------------------------------------------------------------
 @api_router.post("/control/stop", tags=["control"])
