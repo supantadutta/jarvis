@@ -54,6 +54,23 @@ def test_tool_requirement_filters():
         assert spec.tool_calling_support
 
 
+def test_vision_requirement_selects_vision_models():
+    specs = enabled_seed()
+    req = RoutingRequest(needs_vision=True, cost_setting=CostSetting.ALLOW_PAID)
+    result = ModelRouter().route(specs, req)
+    assert result.primary is not None
+    for spec in result.selected:
+        assert spec.vision_support  # only vision-capable models survive
+
+
+def test_vision_requirement_excludes_local_only_models():
+    # Seed local models have no vision; requiring vision must drop them.
+    specs = enabled_seed()
+    result = ModelRouter().route(specs, RoutingRequest(needs_vision=True,
+                                                       cost_setting=CostSetting.ALLOW_PAID))
+    assert all(not s.is_local for s in result.selected)
+
+
 def test_multi_model_modes_return_multiple():
     router = ModelRouter()
     for mode in (Mode.PARALLEL_MODE, Mode.DEBATE_MODE, Mode.DEEP_WORK_MODE):

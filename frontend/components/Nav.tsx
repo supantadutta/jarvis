@@ -12,7 +12,9 @@ const PAGES = [
   ["/workflows", "Workflows"],
   ["/soc", "SOC"],
   ["/evaluations", "Evaluations"],
+  ["/credentials", "Credentials"],
   ["/audit", "Audit"],
+  ["/settings", "Settings"],
   ["/health", "Health"],
 ];
 
