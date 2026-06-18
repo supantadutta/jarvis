@@ -5,7 +5,7 @@ thin: they validate input, call the Brain/Orchestrator, and serialize results.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 
 from app.agents.orchestrator import Orchestrator
 from app.deps import get_brain
@@ -426,6 +426,26 @@ async def emergency_stop(body: EmergencyStop, brain: Brain = Depends(get_brain))
         risk="high", approval_status="n/a",
     )
     return {"emergency_stop": brain.emergency_stop}
+
+
+@api_router.websocket("/ws/events")
+async def ws_events(websocket: WebSocket) -> None:
+    """Live agent-activity timeline: sends a snapshot of recent events, then
+    streams new audit/agent events as they happen."""
+    import asyncio
+
+    brain = get_brain()
+    await websocket.accept()
+    await websocket.send_json({"type": "snapshot", "events": brain.events.snapshot()})
+    queue = brain.events.subscribe()
+    try:
+        while True:
+            event = await queue.get()
+            await websocket.send_json(event)
+    except (WebSocketDisconnect, asyncio.CancelledError):
+        pass
+    finally:
+        brain.events.unsubscribe(queue)
 
 
 @api_router.get("/health", tags=["health"])

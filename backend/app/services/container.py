@@ -68,6 +68,12 @@ class Brain:
         self.approvals = ApprovalQueue()
         self.audit = AuditLog(sink_path=f"{self.settings.audit_dir}/audit.jsonl")
 
+        # --- live event bus (dashboard timeline) ---
+        from app.services.events import EventBus
+
+        self.events = EventBus()
+        self.audit.add_listener(self.events.audit_listener())
+
         # --- security ---
         self.emergency_stop = False
         self.guard = self._build_guard()
