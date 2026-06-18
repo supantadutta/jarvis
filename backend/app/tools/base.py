@@ -27,6 +27,9 @@ class ToolContext:
     model_key: str | None = None
     user_command: str | None = None
     private_mode: bool = False
+    # Set true once a prior tool returned prompt-injection-flagged content, so
+    # the guard escalates subsequent non-read actions to approval.
+    injection_flagged: bool = False
 
 
 @dataclass
@@ -38,6 +41,9 @@ class ToolResult:
     screenshot_ref: str | None = None
     artifacts: list[str] = field(default_factory=list)
     duration_ms: int = 0
+    # True if the (untrusted) content this tool returned tripped the
+    # prompt-injection scanner; the orchestrator should set ctx.injection_flagged.
+    injection_flagged: bool = False
 
 
 @dataclass

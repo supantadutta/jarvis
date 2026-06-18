@@ -36,9 +36,12 @@ whether by a malicious web page, a confused model, or an over-broad command.
    preview of the concrete action (not the model's paraphrase).
 4. **Output filtering.** Tool arguments produced after consuming untrusted
    content are re-validated against allowlists before execution.
-5. **Injection heuristics.** A lightweight scanner flags classic patterns
+5. **Injection heuristics (enforced).** A scanner flags classic patterns
    ("ignore previous instructions", "you are now", exfil/role-override phrases)
-   and raises the required approval level for the affected step.
+   on untrusted content (e.g. `read_file`, browser text). When a read returns
+   flagged content the result carries `injection_flagged`; the orchestrator sets
+   `ctx.injection_flagged`, and the Permission Guard then **forces approval for
+   any subsequent non-read action** (`GuardRequest.injection_flagged`).
 
 ## Credential & MFA boundary
 

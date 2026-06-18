@@ -75,6 +75,7 @@ class ToolExecutor:
             command=args.get(spec.command_arg) if spec.command_arg else None,
             uses_credential=spec.uses_credential,
             is_irreversible=spec.is_irreversible,
+            injection_flagged=getattr(ctx, "injection_flagged", False),
             private_mode=ctx.private_mode,
         )
 

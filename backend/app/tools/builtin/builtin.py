@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from app.security.permissions import PermissionLevel, RiskLevel
-from app.security.prompt_injection import wrap_untrusted
+from app.security.prompt_injection import scan_for_injection, wrap_untrusted
 from app.tools.base import ToolContext, ToolRegistry, ToolResult, ToolSpec
 
 P = PermissionLevel
@@ -41,11 +41,14 @@ async def _read_file(ctx: ToolContext, args: dict) -> ToolResult:
         if not path.exists() or not path.is_file():
             return ToolResult(ok=False, error="File not found.")
         text = path.read_text(encoding="utf-8", errors="replace")[:200_000]
-        # File contents are untrusted external data.
+        # File contents are untrusted external data — scan + wrap.
+        scan = scan_for_injection(text)
         return ToolResult(
             ok=True,
             output=wrap_untrusted(text, source=f"file:{args['path']}"),
-            summary=f"Read {len(text)} chars from {args['path']}",
+            summary=f"Read {len(text)} chars from {args['path']}"
+            + (" [injection-flagged]" if scan.flagged else ""),
+            injection_flagged=scan.flagged,
         )
     except Exception as exc:  # noqa: BLE001
         return ToolResult(ok=False, error=str(exc))

