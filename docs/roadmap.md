@@ -63,6 +63,14 @@ Also implemented:
   `storage_state` encrypted at rest through the vault (DB holds only a pointer);
   round-trip tested.
 
+Also implemented:
+- ✅ **Pluggable vector memory** (closes "Qdrant or Chroma"): a `VectorBackend`
+  interface + `VectorMemoryStore` (drop-in for the lexical store). Default
+  `local_vector` uses offline, process-stable hashing embeddings + a cosine
+  index (no model/service); `chroma` and `qdrant` adapters are lazy and the
+  Brain falls back to lexical if a backend is unavailable. Selected via
+  `VECTOR_BACKEND`.
+
 Also implemented (Phase 2 now feature-complete for the local-first scope):
 - ✅ **Provider token streaming**: `stream()` on Mock/Ollama/OpenAI-compatible +
   a `stream_text()` helper; the orchestrator's `stream_answer()` streams the

@@ -63,7 +63,7 @@ class Brain:
         self.evaluations = EvaluationStore()
 
         # --- stateful services ---
-        self.memory = MemoryStore()
+        self.memory = self._build_memory()
         self.tasks = TaskStore()
         self.approvals = ApprovalQueue()
         self.audit = AuditLog(sink_path=f"{self.settings.audit_dir}/audit.jsonl")
@@ -214,6 +214,39 @@ class Brain:
         for spec in self.registry.all():
             if spec.provider == provider:
                 spec.enabled = True
+
+    def _build_memory(self):
+        """Select the memory backend from settings.vector_backend.
+
+        memory (default) = dependency-free lexical retriever.
+        local_vector     = offline embedding (hashing) + cosine index.
+        chroma / qdrant  = external vector DB (lazy); falls back to lexical if
+                           the dependency/service is unavailable.
+        """
+        backend = (self.settings.vector_backend or "memory").lower()
+        if backend in ("memory", "lexical"):
+            return MemoryStore()
+        try:
+            from app.rag.vector import (
+                ChromaVectorBackend,
+                LocalVectorBackend,
+                QdrantVectorBackend,
+                VectorMemoryStore,
+            )
+
+            if backend in ("local_vector", "local-vector"):
+                return VectorMemoryStore(LocalVectorBackend())
+            if backend == "chroma":
+                return VectorMemoryStore(ChromaVectorBackend(self.settings.chroma_path))
+            if backend == "qdrant":
+                return VectorMemoryStore(QdrantVectorBackend(self.settings.qdrant_url))
+        except Exception as exc:  # noqa: BLE001 - degrade gracefully to lexical
+            import logging
+
+            logging.getLogger("jarvis").warning(
+                "Vector backend '%s' unavailable (%s); using lexical memory.", backend, exc
+            )
+        return MemoryStore()
 
     def _build_guard(self) -> PermissionGuard:
         s = self.settings

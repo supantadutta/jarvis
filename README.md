@@ -134,12 +134,12 @@ it 100% local.
 | **Approval Queue** (async wait, approve/deny/trust) | ✅ tested |
 | **Audit log** (append-only JSONL + secret redaction) | ✅ |
 | **Prompt-injection defense** (untrusted wrapping + scanner) | ✅ |
-| Local **RAG/memory** (dependency-free lexical retriever; Chroma/Qdrant later) | ✅ |
+| Local **RAG/memory** (lexical + pluggable vector backend: local/Chroma/Qdrant) | ✅ |
 | **Telegram bot** scaffold (allowlist + commands + orchestrator) | ✅ |
 | Credential manager (metadata + masking + approval hook) | ✅ |
 | Next.js **dashboard** (chat, tasks, agents, models, approvals, tools, memory, workflows, audit, health) | ✅ |
 | Docker Compose, `.env.example`, Makefile, bootstrap/health scripts | ✅ |
-| **Tests** — 157 passing (permissions, router, tools, approvals, orchestrator, API, Phase 2) | ✅ |
+| **Tests** — 163 passing (permissions, router, tools, approvals, orchestrator, API, Phase 2) | ✅ |
 
 ### Phase 2 (in progress — see `docs/roadmap.md`)
 
