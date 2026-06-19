@@ -278,6 +278,27 @@ class Brain:
         self.emergency_stop = engaged
         self.guard.emergency_stop = engaged
 
+    # Runtime-mutable, NON-SECRET policy toggles. Secrets are never settable here.
+    _MUTABLE_POLICY = {
+        "allow_low_risk_write", "trusted_terminal_read", "allow_network",
+        "max_cascade_attempts", "default_mode",
+    }
+
+    def apply_policy_update(self, updates: dict) -> dict:
+        """Apply safe policy changes and rebuild the guard. Returns applied keys."""
+        applied: dict = {}
+        for key, value in updates.items():
+            if key not in self._MUTABLE_POLICY:
+                continue
+            setattr(self.settings, key, value)
+            applied[key] = value
+        if applied:
+            # Rebuild the guard from the new policy and re-point the executor.
+            self.guard = self._build_guard()
+            self.guard.emergency_stop = self.emergency_stop
+            self.executor.guard = self.guard
+        return applied
+
     def provider_for(self, spec: ModelSpec) -> LLMProvider | None:
         return self.providers.get(spec.provider) or self.providers.get("mock")
 

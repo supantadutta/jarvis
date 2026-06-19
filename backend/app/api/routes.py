@@ -450,6 +450,21 @@ async def get_settings_summary(brain: Brain = Depends(get_brain)) -> dict:
     }
 
 
+@api_router.patch("/settings", tags=["settings"])
+async def update_settings(updates: dict, brain: Brain = Depends(get_brain)) -> dict:
+    """Apply safe, non-secret policy toggles at runtime (rebuilds the guard).
+
+    Allowed keys: allow_low_risk_write, trusted_terminal_read, allow_network,
+    max_cascade_attempts, default_mode. Anything else is ignored."""
+    applied = brain.apply_policy_update(updates)
+    if not applied:
+        raise HTTPException(400, "No mutable policy keys in request.")
+    brain.audit.record(agent="system", tool="update_settings",
+                       output_summary=f"policy updated: {list(applied)}",
+                       risk="medium", approval_status="n/a")
+    return {"applied": applied}
+
+
 @api_router.get("/credentials", tags=["credentials"])
 async def list_credentials(brain: Brain = Depends(get_brain)) -> dict:
     # Metadata only; usernames masked; secret values never present.
