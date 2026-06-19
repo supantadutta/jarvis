@@ -207,6 +207,50 @@ async def _create_xlsx_report(ctx: ToolContext, args: dict) -> ToolResult:
         return ToolResult(ok=False, error=str(exc), summary="xlsx generation failed")
 
 
+async def _analyze_csv(ctx: ToolContext, args: dict) -> ToolResult:
+    """Read a workspace CSV and return summary stats (stdlib only, no pandas)."""
+    import csv
+    import statistics
+
+    try:
+        path = _safe_join(ctx.workspace_root, args["path"])
+        if not path.exists() or not path.is_file():
+            return ToolResult(ok=False, error="CSV file not found.")
+        with path.open(encoding="utf-8", errors="replace", newline="") as fh:
+            reader = csv.DictReader(fh)
+            rows = list(reader)
+            headers = reader.fieldnames or []
+        if not headers:
+            return ToolResult(ok=False, error="CSV has no header row.")
+
+        columns: dict[str, dict] = {}
+        for col in headers:
+            values = [r.get(col, "") for r in rows]
+            nums: list[float] = []
+            for v in values:
+                try:
+                    nums.append(float(v))
+                except (TypeError, ValueError):
+                    pass
+            is_numeric = len(nums) == len([v for v in values if v not in ("", None)]) and bool(nums)
+            info: dict = {"type": "numeric" if is_numeric else "text",
+                          "non_empty": len([v for v in values if v not in ("", None)])}
+            if is_numeric:
+                info.update({
+                    "min": min(nums), "max": max(nums),
+                    "mean": round(statistics.fmean(nums), 4), "sum": round(sum(nums), 4),
+                })
+            columns[col] = info
+
+        return ToolResult(
+            ok=True,
+            output={"rows": len(rows), "columns": headers, "stats": columns},
+            summary=f"Analyzed CSV: {len(rows)} rows × {len(headers)} columns",
+        )
+    except Exception as exc:  # noqa: BLE001
+        return ToolResult(ok=False, error=str(exc))
+
+
 # --------------------------------------------------------------------------
 # Phase 3 integration tools (defensive SOC / docs / comms)
 # --------------------------------------------------------------------------
@@ -539,6 +583,9 @@ def register_builtin_tools(registry: ToolRegistry) -> ToolRegistry:
     reg(name="search_files", description="Search workspace files by name/content.",
         permission=P.SAFE_READ, risk=R.LOW, func=_search_files, path_arg="path",
         input_schema={"path": "str", "query": "str", "extension": "str?"})
+    reg(name="analyze_csv", description="Summarize a workspace CSV (rows, columns, numeric stats).",
+        permission=P.SAFE_READ, risk=R.NONE, func=_analyze_csv, path_arg="path",
+        input_schema={"path": "str"})
     reg(name="search_memory", description="Semantic/lexical search over local memory.",
         permission=P.SAFE_READ, risk=R.NONE, func=_search_memory,
         input_schema={"query": "str", "collection": "str?", "limit": "int?"})
