@@ -52,11 +52,13 @@ class AgentRunResult:
     model: str | None = None
     completed: bool = False
     pending_approvals: list[str] = field(default_factory=list)
+    budget: dict | None = None  # session guardrail usage
 
     def public(self) -> dict:
         return {
             "goal": self.goal, "answer": self.answer, "model": self.model,
             "completed": self.completed, "pending_approvals": self.pending_approvals,
+            "budget": self.budget,
             "steps": [
                 {"n": s.n, "thought": s.thought, "tool": s.tool, "args": s.args,
                  "ok": s.ok, "observation": s.observation[:500], "decision": s.decision,
@@ -109,7 +111,23 @@ class AutonomousAgent:
         history: list[str] = []
         private = False
 
+        # Global session guardrails (actions/time/cost + loop detection).
+        from app.brain.guardrails import SessionBudget
+
+        s = self.brain.settings
+        budget = SessionBudget(
+            max_actions=getattr(s, "agent_max_actions", 25),
+            max_seconds=getattr(s, "agent_max_seconds", 120.0),
+            max_cost=getattr(s, "session_max_cost", 10.0),
+        )
+
         for n in range(1, max_steps + 1):
+            exceeded = budget.check()
+            if exceeded is not None:
+                result.answer = f"Stopped by guardrail: {exceeded.reason}.\nProgress:\n" + \
+                    "\n".join(history)
+                result.budget = budget.public()
+                return result
             prompt = (
                 f"GOAL: {goal}\n\nAvailable tools:\n{catalog}\n\n"
                 + ("Progress so far:\n" + "\n".join(history) + "\n\n" if history else "")
@@ -150,9 +168,13 @@ class AutonomousAgent:
             history.append(f"[{n}] {tool} -> ({outcome.decision.value}) {str(obs)[:200]}")
             if outcome.approval_id:
                 result.pending_approvals.append(outcome.approval_id)
+            # Record against the session budget (signature drives loop detection).
+            signature = f"{tool}:{sorted(args.items())}"
+            budget.record(signature, cost_type=spec.cost_type.value)
 
-        # Budget exhausted: summarize what we have.
+        # Step budget exhausted: summarize what we have.
         result.answer = "Reached the step budget. Progress:\n" + "\n".join(history)
+        result.budget = budget.public()
         return result
 
     @staticmethod

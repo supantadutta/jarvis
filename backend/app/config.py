@@ -107,6 +107,11 @@ class Settings(BaseSettings):
     # --- safety: cap how many models a cascade/cost-saver run may try ---
     max_cascade_attempts: int = 4
 
+    # --- safety: global session guardrails for autonomous/graph runs ---
+    agent_max_actions: int = 25
+    agent_max_seconds: float = 120.0
+    session_max_cost: float = 10.0  # estimated cost units (paid model calls)
+
     # --- Phase 3 integrations (optional; outbound actions are approval-gated) ---
     github_token: str | None = None
     whatsapp_phone_number_id: str | None = None
