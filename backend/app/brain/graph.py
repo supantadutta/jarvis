@@ -63,11 +63,12 @@ class GraphRunResult:
 
 class GraphExecutor:
     def __init__(self, brain, *, node_timeout: float = 30.0, max_retries: int = 1,
-                 private_mode: bool = False) -> None:
+                 private_mode: bool = False, budget=None) -> None:
         self.brain = brain
         self.node_timeout = node_timeout
         self.max_retries = max_retries
         self.private_mode = private_mode
+        self.budget = budget  # optional shared SessionBudget
         self._cancel = asyncio.Event()
 
     def cancel(self) -> None:
@@ -168,6 +169,9 @@ class GraphExecutor:
             if self._cancel.is_set():
                 result.cancelled = True
                 break
+            if self.budget is not None and self.budget.check() is not None:
+                result.cancelled = True  # stopped by the shared session budget
+                break
             # Ready = not done/failed, all deps done; skip if any dep failed.
             ready: list[PlanNode] = []
             for n in plan.nodes:
@@ -190,6 +194,8 @@ class GraphExecutor:
             wave = await asyncio.gather(*[_go(n) for n in ready])
             for nres in wave:
                 result.results[nres.node_id] = nres
+                if self.budget is not None:
+                    self.budget.record(f"node:{nres.node_id}")
                 if nres.status == NodeStatus.COMPLETED:
                     done.add(nres.node_id)
                     outputs[nres.node_id] = nres.output

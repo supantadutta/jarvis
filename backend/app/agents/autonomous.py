@@ -99,7 +99,8 @@ class AutonomousAgent:
         return "\n".join(lines)
 
     async def run(self, goal: str, *, max_steps: int = 8,
-                  allowed_tools: list[str] | None = None) -> AgentRunResult:
+                  allowed_tools: list[str] | None = None,
+                  budget=None) -> AgentRunResult:
         allowed = allowed_tools or self.DEFAULT_TOOLS
         spec, provider = self._model()
         result = AgentRunResult(goal=goal, answer="", model=spec.key if spec else None)
@@ -111,15 +112,17 @@ class AutonomousAgent:
         history: list[str] = []
         private = False
 
-        # Global session guardrails (actions/time/cost + loop detection).
-        from app.brain.guardrails import SessionBudget
+        # Global session guardrails (actions/time/cost + loop detection). A shared
+        # budget may be passed in by the UnifiedEngine; otherwise build one.
+        if budget is None:
+            from app.brain.guardrails import SessionBudget
 
-        s = self.brain.settings
-        budget = SessionBudget(
-            max_actions=getattr(s, "agent_max_actions", 25),
-            max_seconds=getattr(s, "agent_max_seconds", 120.0),
-            max_cost=getattr(s, "session_max_cost", 10.0),
-        )
+            s = self.brain.settings
+            budget = SessionBudget(
+                max_actions=getattr(s, "agent_max_actions", 25),
+                max_seconds=getattr(s, "agent_max_seconds", 120.0),
+                max_cost=getattr(s, "session_max_cost", 10.0),
+            )
 
         for n in range(1, max_steps + 1):
             exceeded = budget.check()

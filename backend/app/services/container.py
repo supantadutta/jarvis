@@ -122,6 +122,11 @@ class Brain:
 
         self.processing_queue = ProcessingQueue(concurrency=2)
 
+        # The single unified execution engine (chat/autonomous/graph strategies).
+        from app.brain.engine import UnifiedEngine
+
+        self.engine = UnifiedEngine(self)
+
         # --- plugin system (opt-in; off by default) ---
         from app.plugins.loader import PluginManager
 

@@ -320,6 +320,20 @@ async def workflow_runs(brain: Brain = Depends(get_brain)) -> dict:
 # --------------------------------------------------------------------------
 # Cognitive Processing Engine v2 — /api/brain/*
 # --------------------------------------------------------------------------
+@api_router.post("/brain/run", tags=["brain"])
+async def brain_run(payload: dict, brain: Brain = Depends(get_brain)) -> dict:
+    """THE unified entry point: one engine analyzes the request and auto-selects
+    the execution strategy (chat / autonomous / graph), or honors an explicit
+    `execution`. Shares one analyzer, budget, quality + learning path."""
+    command = (payload.get("command") or "").strip()
+    if not command:
+        raise HTTPException(400, "command is required")
+    result = await brain.engine.run(
+        command, execution=payload.get("execution", "auto"),
+        mode=payload.get("mode"), max_steps=payload.get("max_steps", 8))
+    return result.public()
+
+
 @api_router.post("/brain/analyze", tags=["brain"])
 async def brain_analyze(payload: dict, brain: Brain = Depends(get_brain)) -> dict:
     command = (payload.get("command") or "").strip()
