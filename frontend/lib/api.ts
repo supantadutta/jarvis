@@ -1,12 +1,20 @@
 // Minimal API client for the JARVIS backend.
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+// Optional API token (set NEXT_PUBLIC_API_TOKEN when the backend has auth on).
+const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN || "";
+
+export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const h: Record<string, string> = { "Content-Type": "application/json", ...extra };
+  if (API_TOKEN) h["Authorization"] = `Bearer ${API_TOKEN}`;
+  return h;
+}
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}/api${path}`, {
-    headers: { "Content-Type": "application/json" },
     cache: "no-store",
     ...init,
+    headers: authHeaders((init?.headers as Record<string, string>) || {}),
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;

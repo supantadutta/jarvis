@@ -139,7 +139,7 @@ it 100% local.
 | Credential manager (metadata + masking + approval hook) | ✅ |
 | Next.js **dashboard** (chat, tasks, agents, models, approvals, tools, memory, workflows, audit, health) | ✅ |
 | Docker Compose, `.env.example`, Makefile, bootstrap/health scripts | ✅ |
-| **Tests** — 259 passing (permissions, router, tools, approvals, orchestrator, API, Phase 2) | ✅ |
+| **Tests** — 265 passing (permissions, router, tools, approvals, orchestrator, API, Phase 2) | ✅ |
 
 ### Phase 2 (in progress — see `docs/roadmap.md`)
 

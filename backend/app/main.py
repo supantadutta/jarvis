@@ -83,11 +83,26 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=settings.cors_allow_origins,  # locked down (not "*")
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    from app.security.auth import check_http_auth
+
+    if not settings.auth_required:
+        logger.warning(
+            "API AUTH DISABLED — set API_TOKEN (or API_AUTH_ENABLED=true) before "
+            "exposing JARVIS beyond localhost. It can control your PC and accounts."
+        )
+
+    @app.middleware("http")
+    async def _auth_mw(request, call_next):  # websockets bypass http middleware
+        denied = check_http_auth(request)
+        if denied is not None:
+            return denied
+        return await call_next(request)
+
     app.include_router(api_router, prefix="/api")
 
     @app.get("/")

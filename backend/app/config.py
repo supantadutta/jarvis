@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     debug: bool = True
     secret_key: str = Field(default="change-me-in-production")
 
+    # --- API auth + CORS (a personal automation platform must not be open) ---
+    # Auth is enforced when api_auth_enabled is true OR an api_token is set.
+    api_auth_enabled: bool = False
+    api_token: str | None = None
+    cors_allow_origins_raw: str = Field(
+        default="http://localhost:3000,http://127.0.0.1:3000", alias="CORS_ALLOW_ORIGINS"
+    )
+
     # --- database / infra ---
     database_url: str = f"sqlite:///{(DATA_DIR / 'jarvis.db')}"
     redis_url: str = "redis://localhost:6379/0"
@@ -122,6 +130,14 @@ class Settings(BaseSettings):
     @property
     def command_blocklist(self) -> list[str]:
         return _csv(self.command_blocklist_raw)
+
+    @property
+    def cors_allow_origins(self) -> list[str]:
+        return _csv(self.cors_allow_origins_raw) or ["http://localhost:3000"]
+
+    @property
+    def auth_required(self) -> bool:
+        return self.api_auth_enabled or bool(self.api_token)
 
     @property
     def telegram_allowed_user_ids(self) -> list[int]:
