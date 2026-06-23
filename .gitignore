@@ -7,6 +7,9 @@ venv/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
 
 # Data / runtime (never commit local data, DBs, screenshots, audit)
 data/
