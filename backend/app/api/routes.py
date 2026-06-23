@@ -688,6 +688,27 @@ async def ws_events(websocket: WebSocket) -> None:
         brain.events.unsubscribe(queue)
 
 
+@api_router.get("/metrics", tags=["observability"])
+async def metrics(brain: Brain = Depends(get_brain)):
+    from fastapi.responses import PlainTextResponse
+
+    from app.observability.metrics import METRICS
+
+    cache = brain.response_cache.stats()
+    gauges = {
+        "jarvis_models_enabled": len(brain.registry.enabled()),
+        "jarvis_tools_total": len(brain.tools.all()),
+        "jarvis_pending_approvals": len(brain.approvals.pending()),
+        "jarvis_tasks_total": len(brain.tasks.all()),
+        "jarvis_queue_jobs": len(brain.processing_queue.all()),
+        "jarvis_response_cache_hit_rate": cache["hit_rate"],
+        "jarvis_response_cache_size": cache["size"],
+        "jarvis_emergency_stop": int(brain.emergency_stop),
+        "jarvis_audit_entries": len(brain.audit.recent(10000)),
+    }
+    return PlainTextResponse(METRICS.render(gauges), media_type="text/plain; version=0.0.4")
+
+
 @api_router.get("/health", tags=["health"])
 async def health(brain: Brain = Depends(get_brain)) -> dict:
     return {

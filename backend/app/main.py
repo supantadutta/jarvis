@@ -11,8 +11,10 @@ from app.api.routes import api_router
 from app.config import get_settings
 from app.deps import get_brain
 
+from app.observability.logging import setup_logging
+
+setup_logging(json_format=True)
 logger = logging.getLogger("jarvis")
-logging.basicConfig(level=logging.INFO)
 
 
 @asynccontextmanager
@@ -100,8 +102,22 @@ def create_app() -> FastAPI:
     async def _auth_mw(request, call_next):  # websockets bypass http middleware
         denied = check_http_auth(request)
         if denied is not None:
+            from app.observability.metrics import METRICS
+
+            METRICS.inc("jarvis_http_requests_total", path=request.url.path,
+                        method=request.method, status=401)
             return denied
-        return await call_next(request)
+        import time as _t
+
+        from app.observability.metrics import METRICS
+
+        start = _t.perf_counter()
+        response = await call_next(request)
+        METRICS.inc("jarvis_http_requests_total", path=request.url.path,
+                    method=request.method, status=response.status_code)
+        METRICS.inc("jarvis_http_request_seconds_sum", _t.perf_counter() - start,
+                    path=request.url.path)
+        return response
 
     app.include_router(api_router, prefix="/api")
 

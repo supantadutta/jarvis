@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     groq_api_key: str | None = None
     openrouter_api_key: str | None = None
     openai_compatible_base_url: str | None = None
+    # Fernet key for the encrypted credential vault (model API keys etc.).
+    # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    vault_key: str | None = None
 
     # --- RAG / memory ---
     vector_backend: str = "memory"  # memory | local_vector | chroma | qdrant

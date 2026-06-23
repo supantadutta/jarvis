@@ -136,10 +136,22 @@ class Brain:
             screenshots_dir=self.settings.screenshots_dir,
         )
 
-        # --- credentials (metadata only; secrets live in the vault) ---
-        from app.security.credentials import CredentialManager
+        # --- credentials + encrypted vault (model API keys etc. at rest) ---
+        from app.security.credentials import CredentialManager, NullVault
 
-        self.credentials = CredentialManager()
+        vault = NullVault()
+        if self.settings.vault_key:
+            try:
+                from app.security.credentials import FernetVault
+
+                vault = FernetVault(self.settings.vault_key,
+                                    store_path=f"{self.settings.chroma_path}/vault.json")
+            except Exception as exc:  # noqa: BLE001 - degrade to in-memory only
+                import logging
+
+                logging.getLogger("jarvis").warning("Vault disabled (%s).", exc)
+        self.vault = vault
+        self.credentials = CredentialManager(vault)
 
         # --- workflows ---
         from app.workflows.engine import WorkflowEngine, WorkflowScheduler
@@ -407,6 +419,19 @@ class Brain:
         self._provider_config[provider] = {
             "kind": kind, "base_url": base_url, "has_key": bool(api_key)
         }
+        # Track + encrypt the API key at rest (the provider also holds it in
+        # memory to make calls). Never logged; masked in the credentials UI.
+        if api_key:
+            from app.security.credentials import CredentialMeta
+
+            ref = f"model:{provider}"
+            try:
+                self.vault.set(ref, api_key)
+            except Exception:  # noqa: BLE001 - NullVault / no key configured
+                pass
+            self.credentials.register(CredentialMeta(
+                name=ref, platform=provider, kind="token", username=None,
+                vault_ref=ref, scopes=[kind], requires_approval=True))
         return spec
 
     def remove_model(self, key: str) -> bool:
