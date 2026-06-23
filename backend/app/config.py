@@ -80,9 +80,13 @@ class Settings(BaseSettings):
     openai_compatible_base_url: str | None = None
 
     # --- RAG / memory ---
-    vector_backend: str = "memory"  # memory | chroma | qdrant
+    vector_backend: str = "memory"  # memory | local_vector | chroma | qdrant
     chroma_path: str = str(DATA_DIR / "memory" / "chroma")
     qdrant_url: str = "http://localhost:6333"
+    # Embeddings for vector backends: hashing (offline default) | ollama |
+    # sentence_transformers. ollama uses a local model (nomic-embed-text).
+    embedding_provider: str = "hashing"
+    embedding_model: str = "nomic-embed-text"
 
     # --- Telegram ---
     telegram_enabled: bool = False

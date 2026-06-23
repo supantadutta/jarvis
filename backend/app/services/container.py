@@ -277,6 +277,7 @@ class Brain:
         if backend in ("memory", "lexical"):
             return MemoryStore()
         try:
+            from app.rag.embeddings import build_embedder
             from app.rag.vector import (
                 ChromaVectorBackend,
                 LocalVectorBackend,
@@ -284,12 +285,21 @@ class Brain:
                 VectorMemoryStore,
             )
 
+            # Real (or offline-hashing) embeddings power the vector store.
+            embedder = build_embedder(
+                provider=self.settings.embedding_provider,
+                base_url=self.settings.ollama_base_url,
+                model=self.settings.embedding_model)
+
+            def _embed(text: str) -> list[float]:
+                return embedder.embed(text)
+
             if backend in ("local_vector", "local-vector"):
-                return VectorMemoryStore(LocalVectorBackend())
+                return VectorMemoryStore(LocalVectorBackend(), embed=_embed)
             if backend == "chroma":
-                return VectorMemoryStore(ChromaVectorBackend(self.settings.chroma_path))
+                return VectorMemoryStore(ChromaVectorBackend(self.settings.chroma_path), embed=_embed)
             if backend == "qdrant":
-                return VectorMemoryStore(QdrantVectorBackend(self.settings.qdrant_url))
+                return VectorMemoryStore(QdrantVectorBackend(self.settings.qdrant_url), embed=_embed)
         except Exception as exc:  # noqa: BLE001 - degrade gracefully to lexical
             import logging
 
@@ -416,4 +426,5 @@ class Brain:
             "audit": self.audit,
             "browser": self.browser,
             "learner": self.learner,
+            "layered_memory": getattr(self, "layered_memory", None),
         }

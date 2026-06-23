@@ -339,6 +339,31 @@ async def _trigger_n8n_after_approval(ctx: ToolContext, args: dict) -> ToolResul
 # --------------------------------------------------------------------------
 # memory tools
 # --------------------------------------------------------------------------
+async def _index_file(ctx: ToolContext, args: dict) -> ToolResult:
+    """Read a workspace file, chunk it, and store chunks into semantic memory."""
+    from app.rag.chunking import chunk_text
+
+    memory = ctx.services.get("layered_memory") or ctx.services.get("memory")
+    if not memory:
+        return ToolResult(ok=False, error="Memory service unavailable.")
+    try:
+        path = _safe_join(ctx.workspace_root, args["path"])
+        if not path.exists() or not path.is_file():
+            return ToolResult(ok=False, error="File not found.")
+        text = path.read_text(encoding="utf-8", errors="replace")[:500_000]
+    except Exception as exc:  # noqa: BLE001
+        return ToolResult(ok=False, error=str(exc))
+    chunks = chunk_text(text, size=args.get("chunk_size", 800), overlap=args.get("overlap", 120))
+    for i, c in enumerate(chunks):
+        if hasattr(memory, "remember"):
+            memory.remember("semantic", c, source=f"file:{args['path']}#chunk{i}",
+                            metadata={"chunk_index": i})
+        else:
+            memory.add(c, collection="semantic", source=f"file:{args['path']}#chunk{i}")
+    return ToolResult(ok=True, output={"chunks": len(chunks)},
+                      summary=f"Indexed {len(chunks)} chunks from {args['path']}")
+
+
 async def _add_memory(ctx: ToolContext, args: dict) -> ToolResult:
     memory = ctx.services.get("memory")
     if not memory:
@@ -621,6 +646,9 @@ def register_builtin_tools(registry: ToolRegistry) -> ToolRegistry:
     reg(name="add_memory", description="Store a piece of text in local memory.",
         permission=P.LOW_RISK_WRITE, risk=R.LOW, func=_add_memory,
         input_schema={"text": "str", "collection": "str?"})
+    reg(name="index_file", description="Chunk a workspace file into semantic memory (RAG).",
+        permission=P.LOW_RISK_WRITE, risk=R.LOW, func=_index_file, path_arg="path",
+        input_schema={"path": "str", "chunk_size": "int?", "overlap": "int?"})
     reg(name="create_report_markdown", description="Generate a timestamped markdown report.",
         permission=P.LOW_RISK_WRITE, risk=R.LOW, func=_create_report_markdown,
         input_schema={"title": "str", "content": "str"})
