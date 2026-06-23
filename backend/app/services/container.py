@@ -205,8 +205,50 @@ class Brain:
             with self._session() as s:
                 repo.persist_approval(s, approval)
 
+        def _on_memory(item):
+            with self._session() as s:
+                repo.persist_memory(s, item)
+
         self.audit.add_listener(_on_audit)
         self.approvals.add_listener(_on_approval)
+        # Memory write-through (the underlying store, used by LayeredMemory too).
+        if hasattr(self.memory, "on_add"):
+            self.memory.on_add = _on_memory
+
+    def hydrate(self) -> dict:
+        """Load durable state from the DB into the in-memory runtime (the DB is
+        the source of truth; the in-memory stores are a hydrated cache). Safe to
+        call once at startup; a no-op when persistence is off."""
+        if not self.persist_enabled or self._engine is None:
+            return {"hydrated": False}
+        from app.services import persistence as repo
+        from app.services.tasks import Task, TaskStatus, TaskStep
+
+        loaded = {"tasks": 0, "memory": 0}
+        with self._session() as s:
+            # Memory (load without re-persisting via load_item).
+            for item in repo.load_memory(s):
+                if hasattr(self.memory, "load_item"):
+                    self.memory.load_item(item)
+                    loaded["memory"] += 1
+            # Tasks (+ steps).
+            for t in repo.load_tasks(s):
+                if self.tasks.get(t["id"]):
+                    continue
+                task = Task(id=t["id"], command=t["command"], task_type=t["task_type"],
+                            mode=t["mode"])
+                try:
+                    task.status = TaskStatus(t["status"])
+                except ValueError:
+                    task.status = TaskStatus.COMPLETED
+                task.result = t["result"]
+                task.steps = [TaskStep(index=st["index"], description=st["description"],
+                                       permission=st["permission"], risk=st["risk"],
+                                       status=st["status"], approval_id=st["approval_id"])
+                              for st in t["steps"]]
+                self.tasks._tasks[task.id] = task
+                loaded["tasks"] += 1
+        return {"hydrated": True, **loaded}
 
     def _session(self):
         from sqlmodel import Session

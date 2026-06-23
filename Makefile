@@ -26,6 +26,12 @@ test: ## Run the backend test suite
 run: ## Run the API (reload) on :8000
 	cd backend && .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
+migrate: ## Apply DB migrations (alembic upgrade head)
+	cd backend && .venv/bin/python -m alembic upgrade head
+
+migration: ## Create a new migration: make migration m="message"
+	cd backend && .venv/bin/python -m alembic revision --autogenerate -m "$(m)"
+
 lint: ## Lint with ruff (if installed)
 	cd backend && .venv/bin/python -m ruff check . || echo "ruff not installed (pip install ruff)"
 

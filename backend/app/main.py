@@ -30,6 +30,13 @@ async def lifespan(app: FastAPI):
         logger.warning("DB init skipped: %s", exc)
     # Build the Brain once.
     brain = get_brain()
+    # DB is the source of truth: hydrate the in-memory runtime from it.
+    try:
+        hydrated = brain.hydrate()
+        if hydrated.get("hydrated"):
+            logger.info("Hydrated from DB: %s", hydrated)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Hydration skipped: %s", exc)
     # Start the Cognitive Processing Engine v2 background worker.
     try:
         await brain.processing_queue.start()

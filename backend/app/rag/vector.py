@@ -106,6 +106,7 @@ class VectorMemoryStore:
     def __init__(self, backend: VectorBackend | None = None, embed: EmbeddingFn | None = None) -> None:
         self.backend = backend or LocalVectorBackend()
         self.embed = embed or HashingEmbedding()
+        self.on_add = None  # optional callback(MemoryItem) for write-through
 
     def add(self, text: str, *, collection: str = "default",
             metadata: dict | None = None, source: str | None = None) -> MemoryItem:
@@ -117,7 +118,17 @@ class VectorMemoryStore:
         payload = {"id": item.id, "text": text, "collection": collection,
                    "source": source, "metadata": item.metadata}
         self.backend.upsert(item.id, self.embed(text), payload)
+        if self.on_add is not None:
+            try:
+                self.on_add(item)
+            except Exception:  # noqa: BLE001
+                pass
         return item
+
+    def load_item(self, item: MemoryItem) -> None:
+        payload = {"id": item.id, "text": item.text, "collection": item.collection,
+                   "source": item.source, "metadata": item.metadata}
+        self.backend.upsert(item.id, self.embed(item.text), payload)
 
     def search(self, query: str, *, collection: str | None = None, limit: int = 5) -> list[SearchHit]:
         if not query.strip():

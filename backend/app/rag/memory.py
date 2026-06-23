@@ -44,6 +44,7 @@ class MemoryStore:
 
     def __init__(self) -> None:
         self._items: dict[str, MemoryItem] = {}
+        self.on_add = None  # optional callback(MemoryItem) for write-through
 
     def add(
         self,
@@ -62,7 +63,16 @@ class MemoryStore:
             _vec=Counter(_tokens(text)),
         )
         self._items[item.id] = item
+        if self.on_add is not None:
+            try:
+                self.on_add(item)
+            except Exception:  # noqa: BLE001 - persistence must not break memory
+                pass
         return item
+
+    def load_item(self, item: MemoryItem) -> None:
+        """Insert a pre-built item (e.g. hydrated from DB) without re-persisting."""
+        self._items[item.id] = item
 
     def get(self, item_id: str) -> MemoryItem | None:
         return self._items.get(item_id)
