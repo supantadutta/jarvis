@@ -93,6 +93,11 @@ class Brain:
 
         self.learner = SelfLearner(self)
 
+        # --- autonomous agent loop (the "do anything" engine) ---
+        from app.agents.autonomous import AutonomousAgent
+
+        self.autonomous = AutonomousAgent(self)
+
         # --- plugin system (opt-in; off by default) ---
         from app.plugins.loader import PluginManager
 

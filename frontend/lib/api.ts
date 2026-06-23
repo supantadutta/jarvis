@@ -75,4 +75,6 @@ export const api = {
   providers: () => http<any>("/providers"),
   learn: (topic: string, maxSources = 3) =>
     http<any>("/learn", { method: "POST", body: JSON.stringify({ topic, max_sources: maxSources }) }),
+  agentRun: (goal: string, maxSteps = 8) =>
+    http<any>("/agent/run", { method: "POST", body: JSON.stringify({ goal, max_steps: maxSteps }) }),
 };

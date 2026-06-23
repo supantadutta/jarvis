@@ -318,6 +318,24 @@ async def workflow_runs(brain: Brain = Depends(get_brain)) -> dict:
 
 
 # --------------------------------------------------------------------------
+# autonomous agent loop (goal -> reason -> act -> observe -> repeat)
+# --------------------------------------------------------------------------
+@api_router.post("/agent/run", tags=["agent"])
+async def agent_run(payload: dict, brain: Brain = Depends(get_brain)) -> dict:
+    """Give JARVIS a goal; it reasons with a connected model and takes guard-gated
+    actions (web, files, memory, reports, …) until done. Risky steps create
+    approvals you resolve in the queue."""
+    goal = (payload.get("goal") or "").strip()
+    if not goal:
+        raise HTTPException(400, "goal is required")
+    result = await brain.autonomous.run(
+        goal, max_steps=payload.get("max_steps", 8),
+        allowed_tools=payload.get("allowed_tools"),
+    )
+    return result.public()
+
+
+# --------------------------------------------------------------------------
 # self-learning (web research -> memory)
 # --------------------------------------------------------------------------
 @api_router.post("/learn", tags=["learn"])

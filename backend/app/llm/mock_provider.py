@@ -24,6 +24,11 @@ class MockProvider(LLMProvider):
         self._healthy = healthy
         self._canned = canned or {}
         self.calls: list[CompletionRequest] = []
+        # Scripted actions for the autonomous agent loop (deterministic tests):
+        # a list of dicts like {"action":"tool","tool":"web_search","args":{...}}
+        # or {"action":"final","answer":"..."}; consumed in order.
+        self.agent_script: list[dict] = []
+        self._agent_idx = 0
 
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
         self.calls.append(request)
@@ -47,6 +52,14 @@ class MockProvider(LLMProvider):
     def _json_reply(self, request: CompletionRequest, user_text: str) -> str:
         """Heuristic structured replies so JSON-mode agents get parseable output."""
         low = user_text.lower()
+        # Autonomous agent loop: emit the next scripted action (or finish).
+        if "autonomous_agent" in low or "next action" in low:
+            if self._agent_idx < len(self.agent_script):
+                payload = self.agent_script[self._agent_idx]
+                self._agent_idx += 1
+            else:
+                payload = {"action": "final", "answer": "[mock] done"}
+            return json.dumps(payload)
         if "classify" in low or "task_type" in low:
             payload = {"task_type": "daily_assistant", "mode": "SINGLE_BEST_MODEL"}
         elif "plan" in low or "steps" in low:

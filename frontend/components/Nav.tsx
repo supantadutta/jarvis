@@ -2,6 +2,7 @@ import Link from "next/link";
 
 const PAGES = [
   ["/", "Chat"],
+  ["/agent", "Agent"],
   ["/tasks", "Tasks"],
   ["/agents", "Agents"],
   ["/models", "Models"],
