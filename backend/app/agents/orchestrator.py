@@ -33,6 +33,7 @@ class OrchestratorResult:
     attempts: list[str] = field(default_factory=list)  # models tried, in order
     analysis: dict | None = None  # Cognitive Task Analyzer output
     quality: dict | None = None   # Response Quality Engine report
+    groundedness: dict | None = None  # factuality vs retrieved evidence
 
 
 # Map a task type to routing requirements.
@@ -228,6 +229,13 @@ class Orchestrator:
             report = brain.quality.assess(request=command, answer=answer, analysis=analysis)
             quality_info = report.model_dump()
 
+        # --- groundedness (real factuality proxy vs RETRIEVED EVIDENCE only) ---
+        grounded_info = None
+        if memory_context.strip():
+            from app.brain.groundedness import groundedness_score
+
+            grounded_info = groundedness_score(answer, [memory_context]).public()
+
         # --- finalize ---
         task.result = answer
         task.status = TaskStatus.COMPLETED
@@ -246,7 +254,8 @@ class Orchestrator:
                 task_id=task.id, model_key=task.models[0], task_type=cls.task_type.value,
                 verifier_score=(verifier_info or {}).get("score", 0.7),
                 completeness=(quality_info or {}).get("scores", {}).get("completeness", 0.8),
-                factuality=(quality_info or {}).get("scores", {}).get("safety", 0.9),
+                # Real factuality signal from groundedness when we had evidence.
+                factuality=(grounded_info or {}).get("score", 0.7),
                 tool_success_rate=1.0,
             ))
 
@@ -284,6 +293,7 @@ class Orchestrator:
             attempts=attempts,
             analysis=analysis.model_dump() if analysis is not None else None,
             quality=quality_info,
+            groundedness=grounded_info,
         )
 
     def _pick_worker(self, team: list[str]):

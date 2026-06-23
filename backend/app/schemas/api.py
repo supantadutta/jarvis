@@ -24,6 +24,7 @@ class ChatResponse(BaseModel):
     attempts: list[str] = []
     analysis: dict | None = None
     quality: dict | None = None
+    groundedness: dict | None = None
 
 
 class ApprovalDecision(BaseModel):
