@@ -27,7 +27,12 @@ async def lifespan(app: FastAPI):
     except Exception as exc:  # noqa: BLE001
         logger.warning("DB init skipped: %s", exc)
     # Build the Brain once.
-    get_brain()
+    brain = get_brain()
+    # Start the Cognitive Processing Engine v2 background worker.
+    try:
+        await brain.processing_queue.start()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Processing queue not started: %s", exc)
     logger.info("JARVIS backend ready (env=%s).", settings.environment)
 
     # Optionally start the cron workflow scheduler.
@@ -52,6 +57,10 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    try:
+        await get_brain().processing_queue.stop()
+    except Exception:  # noqa: BLE001
+        pass
     if settings.scheduler_enabled:
         try:
             await get_brain().scheduler.stop()

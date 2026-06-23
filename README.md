@@ -139,7 +139,7 @@ it 100% local.
 | Credential manager (metadata + masking + approval hook) | ✅ |
 | Next.js **dashboard** (chat, tasks, agents, models, approvals, tools, memory, workflows, audit, health) | ✅ |
 | Docker Compose, `.env.example`, Makefile, bootstrap/health scripts | ✅ |
-| **Tests** — 196 passing (permissions, router, tools, approvals, orchestrator, API, Phase 2) | ✅ |
+| **Tests** — 259 passing (permissions, router, tools, approvals, orchestrator, API, Phase 2) | ✅ |
 
 ### Phase 2 (in progress — see `docs/roadmap.md`)
 
@@ -178,6 +178,20 @@ it 100% local.
 | Plugin system (`*_plugin.py` register(); guard-gated) | ✅ tested |
 | MCP adapter (tool registry → `tools/list` manifest) | ✅ tested |
 | Wake word · Home Assistant · workflow marketplace | 🔮 design |
+
+### Cognitive Processing Engine v2 (brain + processing upgrade — `docs/cognitive_engine_v2.md`)
+
+| Area | Status |
+|------|--------|
+| Cognitive Task Analyzer (typed TaskAnalysis) | ✅ tested |
+| Brain Router v2 (10 strategies over ModelRouter) | ✅ tested |
+| Advanced Planner v2 (machine-readable DAG) | ✅ tested |
+| Multi-Agent Execution Graph (parallel · retry · timeout · cancel · partial-recovery) | ✅ tested |
+| Layered Memory (6 layers, privacy-scoped retrieval) + Context Compression | ✅ tested |
+| Response Quality Engine + Learning Loop (feedback → router) | ✅ tested |
+| Perf Optimizer (response/embedding cache, resource-aware) + Processing Queue/worker | ✅ tested |
+| SOC Brain upgrade (triage, YARA, detection logic, web-attack analysis) | ✅ tested |
+| Benchmark suite (routing/planning/guard/injection/memory/SOC) + `/api/brain/*` + Brain v2 dashboard | ✅ tested |
 
 The core and the **entire test suite run with only Python + SQLite + the mock
 provider** — no Ollama, no Postgres, no API keys required.

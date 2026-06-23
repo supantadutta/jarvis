@@ -77,4 +77,12 @@ export const api = {
     http<any>("/learn", { method: "POST", body: JSON.stringify({ topic, max_sources: maxSources }) }),
   agentRun: (goal: string, maxSteps = 8) =>
     http<any>("/agent/run", { method: "POST", body: JSON.stringify({ goal, max_steps: maxSteps }) }),
+  brainAnalyze: (command: string) =>
+    http<any>("/brain/analyze", { method: "POST", body: JSON.stringify({ command }) }),
+  brainPlan: (command: string) =>
+    http<any>("/brain/plan", { method: "POST", body: JSON.stringify({ command }) }),
+  brainExecute: (command: string, background = false) =>
+    http<any>("/brain/execute", { method: "POST", body: JSON.stringify({ command, background }) }),
+  brainStatus: () => http<any>("/brain/status"),
+  brainBenchmarks: () => http<any>("/brain/benchmarks/run", { method: "POST" }),
 };

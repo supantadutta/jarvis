@@ -98,6 +98,30 @@ class Brain:
 
         self.autonomous = AutonomousAgent(self)
 
+        # --- Cognitive Processing Engine v2 (additive brain upgrade) ---
+        from app.brain.analyzer import CognitiveTaskAnalyzer
+        from app.brain.context import ContextCompressor
+        from app.brain.learning import FeedbackLoop
+        from app.brain.memory_v2 import LayeredMemory
+        from app.brain.performance import ResourceMonitor, ResponseCache
+        from app.brain.planner_v2 import AdvancedPlanner
+        from app.brain.quality import QualityEngine
+        from app.brain.router_v2 import BrainRouter
+
+        self.analyzer = CognitiveTaskAnalyzer()
+        self.brain_router = BrainRouter(self.router)
+        self.planner_v2 = AdvancedPlanner(self.tools)
+        self.layered_memory = LayeredMemory(self.memory)
+        self.context_compressor = ContextCompressor()
+        self.quality = QualityEngine()
+        self.response_cache = ResponseCache()
+        self.resource_monitor = ResourceMonitor()
+        self.feedback = FeedbackLoop(self.evaluations)
+        self.graph_runs: dict[str, dict] = {}  # task_id -> GraphRunResult.public()
+        from app.brain.queue import ProcessingQueue
+
+        self.processing_queue = ProcessingQueue(concurrency=2)
+
         # --- plugin system (opt-in; off by default) ---
         from app.plugins.loader import PluginManager
 

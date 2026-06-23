@@ -318,6 +318,118 @@ async def workflow_runs(brain: Brain = Depends(get_brain)) -> dict:
 
 
 # --------------------------------------------------------------------------
+# Cognitive Processing Engine v2 — /api/brain/*
+# --------------------------------------------------------------------------
+@api_router.post("/brain/analyze", tags=["brain"])
+async def brain_analyze(payload: dict, brain: Brain = Depends(get_brain)) -> dict:
+    command = (payload.get("command") or "").strip()
+    if not command:
+        raise HTTPException(400, "command is required")
+    return brain.analyzer.analyze(command, mode_override=payload.get("mode")).model_dump()
+
+
+@api_router.post("/brain/plan", tags=["brain"])
+async def brain_plan(payload: dict, brain: Brain = Depends(get_brain)) -> dict:
+    command = (payload.get("command") or "").strip()
+    if not command:
+        raise HTTPException(400, "command is required")
+    analysis = brain.analyzer.analyze(command, mode_override=payload.get("mode"))
+    from app.brain.router_v2 import choose_strategy
+
+    strategy = payload.get("strategy") or choose_strategy(analysis).value
+    plan = brain.planner_v2.plan(analysis, strategy=strategy)
+    return {"analysis": analysis.model_dump(), "strategy": strategy, "plan": plan.model_dump()}
+
+
+@api_router.post("/brain/execute", tags=["brain"])
+async def brain_execute(payload: dict, brain: Brain = Depends(get_brain)) -> dict:
+    import uuid
+
+    from app.brain.graph import GraphExecutor
+
+    command = (payload.get("command") or "").strip()
+    if not command:
+        raise HTTPException(400, "command is required")
+    analysis = brain.analyzer.analyze(command, mode_override=payload.get("mode"))
+    plan = brain.planner_v2.plan(analysis, strategy=payload.get("strategy", ""))
+    task_id = uuid.uuid4().hex[:12]
+    private = not analysis.cloud_allowed
+
+    if payload.get("background"):
+        async def _job(job):
+            res = await GraphExecutor(brain, private_mode=private).run(plan)
+            brain.graph_runs[task_id] = res.public()
+            return brain.graph_runs[task_id]
+
+        brain.processing_queue.register("brain_graph", _job)
+        job = brain.processing_queue.enqueue("brain_graph", {"task_id": task_id})
+        return {"task_id": task_id, "job_id": job.id, "background": True,
+                "plan_nodes": len(plan.nodes)}
+
+    result = await GraphExecutor(brain, private_mode=private).run(plan)
+    brain.graph_runs[task_id] = result.public()
+    return {"task_id": task_id, **result.public()}
+
+
+@api_router.get("/brain/status", tags=["brain"])
+async def brain_status(brain: Brain = Depends(get_brain)) -> dict:
+    return {
+        "resources": brain.resource_monitor.snapshot(),
+        "response_cache": brain.response_cache.stats(),
+        "memory_layers": brain.layered_memory.stats(),
+        "queue": {"jobs": len(brain.processing_queue.all())},
+        "models_enabled": len(brain.registry.enabled()),
+        "emergency_stop": brain.emergency_stop,
+    }
+
+
+@api_router.post("/brain/memory/search", tags=["brain"])
+async def brain_memory_search(payload: dict, brain: Brain = Depends(get_brain)) -> dict:
+    hits = brain.layered_memory.recall(
+        payload.get("query", ""), layers=payload.get("layers"),
+        for_cloud=payload.get("for_cloud", False), limit=payload.get("limit", 5))
+    return {"hits": [
+        {"text": h.text, "layer": h.layer, "score": h.score, "source": h.source,
+         "privacy": h.privacy} for h in hits]}
+
+
+@api_router.post("/brain/evaluate", tags=["brain"])
+async def brain_evaluate(payload: dict, brain: Brain = Depends(get_brain)) -> dict:
+    from app.brain.learning import TaskFeedback
+
+    fb = TaskFeedback(**payload)
+    return brain.feedback.record(fb)
+
+
+@api_router.get("/brain/models/health", tags=["brain"])
+async def brain_models_health(brain: Brain = Depends(get_brain)) -> dict:
+    out = {}
+    for spec in brain.registry.enabled():
+        out[spec.key] = await brain.registry.health(spec.key)
+    return {"health": out, "leaderboard": brain.feedback.leaderboard()}
+
+
+@api_router.get("/brain/queue", tags=["brain"])
+async def brain_queue(brain: Brain = Depends(get_brain)) -> dict:
+    return {"jobs": [j.public() for j in brain.processing_queue.all()]}
+
+
+@api_router.get("/brain/graph/{task_id}", tags=["brain"])
+async def brain_graph(task_id: str, brain: Brain = Depends(get_brain)) -> dict:
+    res = brain.graph_runs.get(task_id)
+    if res is None:
+        raise HTTPException(404, "graph run not found")
+    return res
+
+
+@api_router.post("/brain/benchmarks/run", tags=["brain"])
+async def brain_benchmarks() -> dict:
+    from app.brain.benchmarks import run_all
+
+    return run_all()
+
+
+# --------------------------------------------------------------------------
 # autonomous agent loop (goal -> reason -> act -> observe -> repeat)
 # --------------------------------------------------------------------------
 @api_router.post("/agent/run", tags=["agent"])
