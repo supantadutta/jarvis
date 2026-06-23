@@ -59,7 +59,7 @@ flowchart TB
 
     subgraph CAP["🧰 Capabilities"]
         direction LR
-        TOOLS["<b>Tool Registry (38)</b><br/>+ ToolExecutor (single chokepoint)"]
+        TOOLS["<b>Tool Registry (41)</b><br/>+ ToolExecutor (single chokepoint)"]
         LLM["<b>LLM Providers</b><br/>Mock · Ollama · OpenAI-compat<br/>· Anthropic/Gemini (P2)"]
         MEM["RAG / Memory<br/>(lexical → Chroma/Qdrant)"]
         AUDIT["Audit Log<br/>(append-only JSONL)"]
@@ -129,7 +129,7 @@ it 100% local.
 | Execution modes (single/cascade/parallel/specialist/debate/verifier/fast/deep/private/cost) | ✅ |
 | Agents: Supervisor, Planner, Verifier + 6 specialists (research/code/file/browser/desktop/SOC) | ✅ |
 | **Orchestrator** running the full lifecycle | ✅ |
-| **Tool registry** (typed) + **38 tools** + **ToolExecutor** chokepoint | ✅ |
+| **Tool registry** (typed) + **41 tools** + **ToolExecutor** chokepoint | ✅ |
 | **Permission Guard** (10 levels, allowlists, emergency stop) | ✅ tested |
 | **Approval Queue** (async wait, approve/deny/trust) | ✅ tested |
 | **Audit log** (append-only JSONL + secret redaction) | ✅ |
@@ -139,7 +139,7 @@ it 100% local.
 | Credential manager (metadata + masking + approval hook) | ✅ |
 | Next.js **dashboard** (chat, tasks, agents, models, approvals, tools, memory, workflows, audit, health) | ✅ |
 | Docker Compose, `.env.example`, Makefile, bootstrap/health scripts | ✅ |
-| **Tests** — 181 passing (permissions, router, tools, approvals, orchestrator, API, Phase 2) | ✅ |
+| **Tests** — 191 passing (permissions, router, tools, approvals, orchestrator, API, Phase 2) | ✅ |
 
 ### Phase 2 (in progress — see `docs/roadmap.md`)
 

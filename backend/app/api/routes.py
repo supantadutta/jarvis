@@ -12,6 +12,7 @@ from app.deps import get_brain
 from app.llm.registry import ModelSpec
 from app.model_router.modes import Mode
 from app.schemas.api import (
+    AddModelRequest,
     ApprovalDecision,
     ChatRequest,
     ChatResponse,
@@ -122,6 +123,30 @@ async def toggle_model(
     if not brain.registry.set_enabled(key, body.enabled):
         raise HTTPException(404, "Model not found")
     return {"key": key, "enabled": body.enabled}
+
+
+@api_router.post("/models", tags=["models"])
+async def add_model(body: AddModelRequest, brain: Brain = Depends(get_brain)) -> dict:
+    """Connect ANY model at runtime from the dashboard (no code edits)."""
+    spec = brain.add_model_source(**body.model_dump())
+    brain.audit.record(agent="system", tool="add_model",
+                       output_summary=f"added model {spec.key} (kind={body.kind})",
+                       risk="low", approval_status="n/a")
+    return {"added": _model_dict(spec)}
+
+
+@api_router.delete("/models/{provider}/{model_name}", tags=["models"])
+async def delete_model(provider: str, model_name: str, brain: Brain = Depends(get_brain)) -> dict:
+    key = f"{provider}/{model_name}"
+    if not brain.remove_model(key):
+        raise HTTPException(404, "Model not found")
+    return {"removed": key}
+
+
+@api_router.get("/providers", tags=["models"])
+async def list_providers(brain: Brain = Depends(get_brain)) -> dict:
+    bound = list(brain.providers.keys())
+    return {"bound": bound, "configs": brain.provider_configs()}
 
 
 @api_router.get("/models/health", tags=["models"])
@@ -290,6 +315,24 @@ async def run_workflow(key: str, brain: Brain = Depends(get_brain)) -> dict:
 @api_router.get("/workflows/runs", tags=["workflows"])
 async def workflow_runs(brain: Brain = Depends(get_brain)) -> dict:
     return {"runs": [r.public() for r in brain.workflows.runs()]}
+
+
+# --------------------------------------------------------------------------
+# self-learning (web research -> memory)
+# --------------------------------------------------------------------------
+@api_router.post("/learn", tags=["learn"])
+async def learn(payload: dict, brain: Brain = Depends(get_brain)) -> dict:
+    """Autonomously research a topic from the web and store it in memory.
+
+    Requires host network access (blocked in PRIVATE_MODE). Fetched content is
+    treated as untrusted."""
+    if not brain.settings.allow_network:
+        raise HTTPException(403, "Network access is disabled (allow_network=false).")
+    topic = (payload.get("topic") or "").strip()
+    if not topic:
+        raise HTTPException(400, "topic is required")
+    result = await brain.learner.learn(topic, max_sources=payload.get("max_sources", 3))
+    return result
 
 
 # --------------------------------------------------------------------------

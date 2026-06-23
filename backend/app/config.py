@@ -88,8 +88,10 @@ class Settings(BaseSettings):
     tts_engine: str = "piper"
     piper_voice: str = "en_US-amy-medium"
 
-    # --- Browser ---
+    # --- Browser & web ---
     browser_headless: bool = False
+    # Optional SearXNG/JSON search endpoint; if unset, web_search uses DuckDuckGo.
+    search_api_url: str | None = None
 
     # --- Workflow scheduler (cron-driven background loop) ---
     scheduler_enabled: bool = False

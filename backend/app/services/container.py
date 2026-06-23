@@ -37,6 +37,8 @@ class Brain:
         self.registry = ModelRegistry()
         self.providers: dict[str, LLMProvider] = {}
         self._mock = MockProvider()
+        self._use_mock = use_mock
+        self._provider_config: dict[str, dict] = {}
         if use_mock:
             # Bind every provider slot to the mock so the whole graph runs offline.
             for name in ("ollama", "openai", "anthropic", "google", "groq",
@@ -81,7 +83,15 @@ class Brain:
         # --- tools ---
         self.tools = ToolRegistry()
         register_builtin_tools(self.tools)
+        from app.tools.builtin.web import register_web_tools
+
+        register_web_tools(self.tools)
         self.executor = ToolExecutor(self.tools, self.guard, self.approvals, self.audit)
+
+        # --- self-learning (web research -> memory) ---
+        from app.services.learner import SelfLearner
+
+        self.learner = SelfLearner(self)
 
         # --- plugin system (opt-in; off by default) ---
         from app.plugins.loader import PluginManager
@@ -302,6 +312,73 @@ class Brain:
     def provider_for(self, spec: ModelSpec) -> LLMProvider | None:
         return self.providers.get(spec.provider) or self.providers.get("mock")
 
+    # --- runtime model/provider management ("connect any model" from the UI) ---
+    def add_model_source(
+        self,
+        *,
+        provider: str,
+        model_name: str,
+        display_name: str | None = None,
+        kind: str = "openai_compatible",
+        base_url: str | None = None,
+        api_key: str | None = None,
+        cost_type: str = "paid",
+        privacy_level: int = 1,
+        reasoning_level: int = 4,
+        coding_level: int = 4,
+        speed_level: int = 3,
+        max_context: int = 32768,
+        vision_support: bool = False,
+        tool_calling_support: bool = True,
+        task_affinity: list[str] | None = None,
+    ) -> ModelSpec:
+        """Register + bind a model from ANY provider at runtime (no code edits)."""
+        from app.llm.factory import build_provider
+        from app.llm.registry import CostType, ModelSpec, TaskType
+
+        if provider not in self.providers:
+            if self._use_mock:
+                self.providers[provider] = self._mock
+            else:
+                self.providers[provider] = build_provider(
+                    name=provider, kind=kind, base_url=base_url, api_key=api_key
+                )
+            self.registry.bind_provider(provider, self.providers[provider])
+
+        try:
+            cost = CostType(cost_type)
+        except ValueError:
+            cost = CostType.PAID
+        affinity = []
+        for t in task_affinity or []:
+            try:
+                affinity.append(TaskType(t))
+            except ValueError:
+                continue
+
+        spec = ModelSpec(
+            provider=provider, model_name=model_name,
+            display_name=display_name or f"{provider}/{model_name}",
+            max_context=max_context, cost_type=cost, privacy_level=privacy_level,
+            speed_level=speed_level, reasoning_level=reasoning_level,
+            coding_level=coding_level, vision_support=vision_support,
+            tool_calling_support=tool_calling_support, enabled=True, task_affinity=affinity,
+        )
+        self.registry.upsert(spec)
+        self._provider_config[provider] = {
+            "kind": kind, "base_url": base_url, "has_key": bool(api_key)
+        }
+        return spec
+
+    def remove_model(self, key: str) -> bool:
+        if not self.registry.get(key):
+            return False
+        self.registry._specs.pop(key, None)
+        return True
+
+    def provider_configs(self) -> dict:
+        return self._provider_config
+
     def service_bundle(self) -> dict:
         return {
             "memory": self.memory,
@@ -309,4 +386,5 @@ class Brain:
             "approvals": self.approvals,
             "audit": self.audit,
             "browser": self.browser,
+            "learner": self.learner,
         }

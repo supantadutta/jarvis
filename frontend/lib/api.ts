@@ -68,4 +68,11 @@ export const api = {
   generateDocument: (body: any) =>
     http<any>("/documents/generate", { method: "POST", body: JSON.stringify(body) }),
   socEvent: (id: number) => http<any>(`/soc/event/${id}`),
+  addModel: (body: any) =>
+    http<any>("/models", { method: "POST", body: JSON.stringify(body) }),
+  deleteModel: (provider: string, model: string) =>
+    http<any>(`/models/${provider}/${model}`, { method: "DELETE" }),
+  providers: () => http<any>("/providers"),
+  learn: (topic: string, maxSources = 3) =>
+    http<any>("/learn", { method: "POST", body: JSON.stringify({ topic, max_sources: maxSources }) }),
 };

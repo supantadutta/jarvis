@@ -46,5 +46,23 @@ class ModelToggle(BaseModel):
     enabled: bool
 
 
+class AddModelRequest(BaseModel):
+    provider: str = Field(min_length=1)  # logical provider name, e.g. "deepseek"
+    model_name: str = Field(min_length=1)  # e.g. "deepseek-chat"
+    display_name: str | None = None
+    kind: str = "openai_compatible"  # ollama|openai_compatible|anthropic|google|...
+    base_url: str | None = None
+    api_key: str | None = None  # stored as "has_key" only; secret kept in memory
+    cost_type: str = "paid"
+    privacy_level: int = 1
+    reasoning_level: int = 4
+    coding_level: int = 4
+    speed_level: int = 3
+    max_context: int = 32768
+    vision_support: bool = False
+    tool_calling_support: bool = True
+    task_affinity: list[str] = []
+
+
 class EmergencyStop(BaseModel):
     engaged: bool
