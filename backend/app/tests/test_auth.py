@@ -1,7 +1,6 @@
 """API authentication + CORS lockdown."""
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings

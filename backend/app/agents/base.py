@@ -22,6 +22,7 @@ class AgentContext:
     memory_context: str = ""
     services: dict = field(default_factory=dict)
     private_mode: bool = False
+    cache: object | None = None  # optional ResponseCache (local-only, speeds repeats)
 
 
 @dataclass
@@ -65,6 +66,10 @@ class BaseAgent:
             temperature=temperature,
             json_mode=json_mode,
         )
+        if ctx.cache is not None:
+            from app.brain.performance import cached_complete
+
+            return await cached_complete(ctx.provider, req, ctx.cache)
         return await ctx.provider.complete(req)
 
     async def run(self, ctx: AgentContext) -> AgentResult:  # pragma: no cover - overridden

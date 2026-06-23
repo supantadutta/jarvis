@@ -22,6 +22,8 @@ class ChatResponse(BaseModel):
     candidates: list[dict] = []
     pending_approvals: list[str] = []
     attempts: list[str] = []
+    analysis: dict | None = None
+    quality: dict | None = None
 
 
 class ApprovalDecision(BaseModel):

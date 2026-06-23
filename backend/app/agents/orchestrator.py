@@ -31,6 +31,8 @@ class OrchestratorResult:
     candidates: list[dict] = field(default_factory=list)
     pending_approvals: list[str] = field(default_factory=list)
     attempts: list[str] = field(default_factory=list)  # models tried, in order
+    analysis: dict | None = None  # Cognitive Task Analyzer output
+    quality: dict | None = None   # Response Quality Engine report
 
 
 # Map a task type to routing requirements.
@@ -79,6 +81,7 @@ class Orchestrator:
             memory_context=memory_context,
             services=self.brain.service_bundle(),
             private_mode=private,
+            cache=getattr(self.brain, "response_cache", None),  # local-only LLM cache
         )
 
     async def run(self, command: str, *, mode_override: Mode | None = None) -> OrchestratorResult:
@@ -86,6 +89,13 @@ class Orchestrator:
         cls = brain.supervisor.classify(command)
         mode = mode_override or cls.mode
         private = mode == Mode.PRIVATE_MODE
+
+        # Cognitive Task Analyzer: enrich the request (privacy, complexity,
+        # whether the verifier is mandatory). Drives quality + verification.
+        analysis = None
+        if hasattr(brain, "analyzer"):
+            analysis = brain.analyzer.analyze(
+                command, mode_override=(mode_override.value if mode_override else None))
 
         # Feed learned performance into the router (self-evaluation loop).
         brain.router.performance = brain.evaluations.to_router_performance()
@@ -108,9 +118,14 @@ class Orchestrator:
         task.agents = team
         task.status = TaskStatus.RUNNING
 
-        # Retrieve memory context (SAFE_READ, auto).
-        mem_hits = brain.memory.search(command, limit=3)
-        memory_context = "\n".join(f"- {h.item.text}" for h in mem_hits)
+        # Retrieve memory context via the layered, privacy-scoped store (SAFE_READ,
+        # auto). High-privacy memory is withheld when the model may be cloud.
+        if hasattr(brain, "layered_memory"):
+            memory_context = brain.layered_memory.summarize(
+                command, for_cloud=not private, budget_chars=800, limit=5)
+        else:
+            mem_hits = brain.memory.search(command, limit=3)
+            memory_context = "\n".join(f"- {h.item.text}" for h in mem_hits)
 
         # --- planning (skipped in FAST_MODE for speed) ---
         plan_dicts: list[dict] = []
@@ -185,7 +200,11 @@ class Orchestrator:
 
         answer = candidates[chosen_index]["text"] if candidates else ""
 
-        if mode in (Mode.DEEP_WORK_MODE, Mode.VERIFIER_MODE, Mode.DEBATE_MODE):
+        # The analyzer can make verification mandatory (risky/complex tasks) even
+        # in otherwise-simple modes.
+        force_verify = bool(analysis and analysis.verifier_mandatory)
+        if (mode in (Mode.DEEP_WORK_MODE, Mode.VERIFIER_MODE, Mode.DEBATE_MODE)
+                or force_verify):
             verdict = await brain.verifier.verify(vctx, command=command, answer=answer)
             verifier_info = {
                 "passed": verdict.passed,
@@ -203,6 +222,12 @@ class Orchestrator:
                 sctx, command=command, contributions=contributions, verdict_summary=verdict.summary
             )
 
+        # --- final quality pass (Response Quality Engine) ---
+        quality_info = None
+        if analysis is not None and hasattr(brain, "quality"):
+            report = brain.quality.assess(request=command, answer=answer, analysis=analysis)
+            quality_info = report.model_dump()
+
         # --- finalize ---
         task.result = answer
         task.status = TaskStatus.COMPLETED
@@ -213,9 +238,25 @@ class Orchestrator:
         brain.persist_chat(role="assistant", content=answer, task_id=task.id, source="orchestrator")
         brain.persist_task(task)
 
-        # Save useful results to memory in deep-work mode.
+        # Feed the learning loop with a real signal (verifier + quality).
+        if hasattr(brain, "feedback") and task.models:
+            from app.brain.learning import TaskFeedback
+
+            brain.feedback.record(TaskFeedback(
+                task_id=task.id, model_key=task.models[0], task_type=cls.task_type.value,
+                verifier_score=(verifier_info or {}).get("score", 0.7),
+                completeness=(quality_info or {}).get("scores", {}).get("completeness", 0.8),
+                factuality=(quality_info or {}).get("scores", {}).get("safety", 0.9),
+                tool_success_rate=1.0,
+            ))
+
+        # Save useful results to episodic + semantic memory in deep-work mode.
         if mode == Mode.DEEP_WORK_MODE and verifier_info and verifier_info.get("passed"):
-            brain.memory.add(answer, collection="deep_work", source=f"task:{task.id}")
+            if hasattr(brain, "layered_memory"):
+                brain.layered_memory.remember("episodic", answer, source=f"task:{task.id}",
+                                              task_type=cls.task_type.value)
+            else:
+                brain.memory.add(answer, collection="deep_work", source=f"task:{task.id}")
 
         brain.audit.record(
             user_command=command,
@@ -241,6 +282,8 @@ class Orchestrator:
             candidates=candidates if mode in MULTI_MODEL_MODES else [],
             pending_approvals=[a.id for a in brain.approvals.pending()],
             attempts=attempts,
+            analysis=analysis.model_dump() if analysis is not None else None,
+            quality=quality_info,
         )
 
     def _pick_worker(self, team: list[str]):
