@@ -93,4 +93,8 @@ export const api = {
     http<any>("/brain/execute", { method: "POST", body: JSON.stringify({ command, background }) }),
   brainStatus: () => http<any>("/brain/status"),
   brainBenchmarks: () => http<any>("/brain/benchmarks/run", { method: "POST" }),
+  brainRun: (command: string, execution = "auto", mode?: string) =>
+    http<any>("/brain/run", { method: "POST", body: JSON.stringify({ command, execution, mode }) }),
+  addCredential: (body: any) =>
+    http<any>("/credentials", { method: "POST", body: JSON.stringify(body) }),
 };

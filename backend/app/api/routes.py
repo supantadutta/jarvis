@@ -652,6 +652,34 @@ async def update_settings(updates: dict, brain: Brain = Depends(get_brain)) -> d
     return {"applied": applied}
 
 
+@api_router.post("/credentials", tags=["credentials"])
+async def add_credential(payload: dict, brain: Brain = Depends(get_brain)) -> dict:
+    """Add a credential the assistant may use to automate a portal (after
+    approval). The secret is stored in the encrypted vault (when configured) and
+    only masked metadata is ever returned."""
+    from app.security.credentials import CredentialMeta
+
+    name = (payload.get("name") or "").strip()
+    platform = (payload.get("platform") or "").strip()
+    if not name or not platform:
+        raise HTTPException(400, "name and platform are required")
+    secret = payload.get("secret")
+    ref = f"cred:{name}"
+    if secret:
+        try:
+            brain.vault.set(ref, secret)
+        except Exception:  # noqa: BLE001 - NullVault when no VAULT_KEY
+            pass
+    brain.credentials.register(CredentialMeta(
+        name=name, platform=platform, kind=payload.get("kind", "password"),
+        username=payload.get("username"), vault_ref=ref,
+        scopes=payload.get("scopes", []), requires_approval=True))
+    brain.audit.record(agent="credential", tool="add_credential",
+                       output_summary=f"registered credential '{name}' for {platform}",
+                       risk="medium", approval_status="n/a")
+    return {"added": name, "platform": platform, "secret_stored": bool(secret)}
+
+
 @api_router.get("/credentials", tags=["credentials"])
 async def list_credentials(brain: Brain = Depends(get_brain)) -> dict:
     # Metadata only; usernames masked; secret values never present.

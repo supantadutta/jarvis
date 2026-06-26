@@ -1,10 +1,108 @@
+@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
   color-scheme: dark;
+  --bg: #04060c;
+  --bg-2: #070b16;
+  --cyan: #22d3ee;
+  --cyan-bright: #67e8f9;
+  --blue: #3b82f6;
+  --amber: #fbbf24;
+  --red: #f87171;
+  --green: #34d399;
+  --line: rgba(34, 211, 238, 0.22);
+  --glow: rgba(34, 211, 238, 0.55);
+  --panel: rgba(8, 16, 28, 0.66);
+  --txt: #cfe9f3;
+  --muted: #6b8497;
 }
+
+* { scrollbar-width: thin; scrollbar-color: var(--cyan) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: linear-gradient(var(--cyan), var(--blue)); border-radius: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+
 body {
-  @apply bg-neutral-950 text-neutral-100;
+  background:
+    radial-gradient(1200px 700px at 70% -10%, rgba(34,211,238,0.10), transparent 60%),
+    radial-gradient(900px 600px at 10% 110%, rgba(59,130,246,0.10), transparent 55%),
+    linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 100% 44px,
+    linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0 / 44px 100%,
+    var(--bg);
+  color: var(--txt);
+  font-family: "Share Tech Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  min-height: 100vh;
 }
+
+/* moving scanline overlay */
+body::after {
+  content: "";
+  position: fixed; inset: 0; pointer-events: none; z-index: 50;
+  background: linear-gradient(rgba(34,211,238,0.05) 50%, transparent 50%);
+  background-size: 100% 4px;
+  opacity: 0.25;
+  animation: scan 8s linear infinite;
+}
+@keyframes scan { from { background-position: 0 0; } to { background-position: 0 100vh; } }
+
+h1, h2, h3, .display { font-family: "Orbitron", "Share Tech Mono", monospace; letter-spacing: 0.06em; }
+
+/* ---------- HUD components ---------- */
+.hud-panel {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 0 0 1px rgba(34,211,238,0.04), 0 8px 40px rgba(0,0,0,0.5),
+    inset 0 0 30px rgba(34,211,238,0.03);
+}
+.hud-panel::before, .hud-panel::after {
+  content: ""; position: absolute; width: 14px; height: 14px; border: 2px solid var(--cyan);
+  opacity: 0.8;
+}
+.hud-panel::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+.hud-panel::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+
+.glow-text { text-shadow: 0 0 8px var(--glow); color: var(--cyan-bright); }
+.glow-border { box-shadow: 0 0 12px var(--glow), inset 0 0 12px rgba(34,211,238,0.12); }
+
+.hud-btn {
+  font-family: "Orbitron", monospace; text-transform: uppercase; letter-spacing: 0.12em;
+  font-size: 0.72rem; padding: 0.55rem 1rem; border-radius: 8px;
+  border: 1px solid var(--cyan); color: var(--cyan-bright);
+  background: linear-gradient(180deg, rgba(34,211,238,0.12), rgba(34,211,238,0.02));
+  transition: all 0.18s ease; cursor: pointer;
+}
+.hud-btn:hover { box-shadow: 0 0 16px var(--glow); background: rgba(34,211,238,0.2); color: #eafdff; }
+.hud-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+.hud-btn-ghost { border-color: var(--line); color: var(--muted); background: transparent; }
+.hud-btn-ghost:hover { color: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 10px var(--glow); }
+
+.hud-input, .hud-select, textarea.hud-input {
+  background: rgba(3, 8, 16, 0.8); border: 1px solid var(--line); border-radius: 8px;
+  color: var(--txt); padding: 0.5rem 0.75rem; outline: none; transition: all 0.15s;
+  font-family: "Share Tech Mono", monospace;
+}
+.hud-input:focus, .hud-select:focus { border-color: var(--cyan); box-shadow: 0 0 12px var(--glow); }
+
+.hud-chip {
+  font-family: "Orbitron", monospace; font-size: 0.6rem; letter-spacing: 0.1em;
+  text-transform: uppercase; padding: 0.15rem 0.5rem; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--cyan);
+}
+
+.label { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; }
+
+.flicker { animation: flicker 3s infinite; }
+@keyframes flicker { 0%,100%{opacity:1} 92%{opacity:1} 93%{opacity:0.6} 94%{opacity:1} 97%{opacity:0.4} 98%{opacity:1} }
+
+.reactor-spin { animation: spin 6s linear infinite; transform-origin: center; }
+.reactor-spin-rev { animation: spin 9s linear infinite reverse; transform-origin: center; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.pulse-dot { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:0.4; transform: scale(0.9)} 50%{opacity:1; transform: scale(1.15)} }
